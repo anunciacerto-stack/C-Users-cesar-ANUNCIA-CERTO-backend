@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         Int          @id @default(autoincrement())
+  name       String
+  email      String       @unique
+  password   String
+  created_at DateTime     @default(now())
+  classifieds Classified[]
+  muralPosts MuralPost[]
+  donations  Donation[]
+}
+
+model Classified {
+  id         Int      @id @default(autoincrement())
+  titulo     String
+  descricao  String
+  preco      Float
+  categoria  String
+  cidade     String
+  estado     String
+  fotos      String[]
+  created_at DateTime @default(now())
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model MuralPost {
+  id         Int      @id @default(autoincrement())
+  assunto    String
+  conteudo   String
+  categoria  String
+  fotos      String[]
+  created_at DateTime @default(now())
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model Donation {
+  id         Int      @id @default(autoincrement())
+  titulo     String
+  descricao  String
+  categoria  String
+  cidade     String
+  estado     String
+  fotos      String[]
+  created_at DateTime @default(now())
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model Category {
+  id       Int        @id @default(autoincrement())
+  nome     String
+  parentId Int?
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryHierarchy")
+
+  @@unique([nome, parentId])
+  @@index([parentId])
+}
