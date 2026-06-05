@@ -5,19 +5,32 @@ import { NfcCoreService, NfcRegisterInput, NfcUpdateInput } from './nfc-core.ser
 export class NfcService {
   constructor(private readonly nfcCore: NfcCoreService) {}
 
-  register(body: NfcRegisterInput) {
+  async register(body: NfcRegisterInput) {
     return this.nfcCore.register(body);
   }
 
-  update(body: NfcUpdateInput) {
+  async update(body: NfcUpdateInput) {
     return this.nfcCore.update(body);
   }
 
-  getStatus(objectId: string) {
-    return { message: this.nfcCore.getStatus(objectId) };
+  async getStatus(objectId: string) {
+    const status = await this.nfcCore.getStatus(objectId);
+    return { message: status };
   }
 
-  getAll() {
-    return this.nfcCore.history();
+  async getAll(limit?: number) {
+    return this.nfcCore.history(limit);
+  }
+
+  async registerScan(tagId: string, userAgent?: string, ipAddress?: string) {
+    return this.nfcCore.registerScan(tagId, userAgent, ipAddress);
+  }
+
+  async getAnalytics(tagId: string) {
+    return this.nfcCore.getAnalytics(tagId);
+  }
+
+  async resolveTag(tagId: string) {
+    return this.nfcCore.resolveTag(tagId);
   }
 }

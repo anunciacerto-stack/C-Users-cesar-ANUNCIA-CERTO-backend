@@ -25,7 +25,7 @@ export class SherifService {
 
   constructor(private readonly nfcCore: NfcCoreService) {}
 
-  check(body: SherifCheckBody) {
+  async check(body: SherifCheckBody) {
     const objectId = (body.objectId ?? body.object_id ?? '').trim();
     const userId = (body.userId ?? body.user_id ?? 'system').trim() || 'system';
     const status = (body.status ?? 'checked').trim() || 'checked';
@@ -34,7 +34,7 @@ export class SherifService {
       throw new BadRequestException('objectId is required');
     }
 
-    const nfcStatus = this.nfcCore.getStatus(objectId);
+    const nfcStatus = await this.nfcCore.getStatus(objectId);
     const now = new Date().toISOString();
     const record: SherifRecord = {
       id: `sh_${Date.now()}`,

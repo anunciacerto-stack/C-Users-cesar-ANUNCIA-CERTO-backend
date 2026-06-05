@@ -11,9 +11,11 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: anunciacerto
     ports:
-      - "5432:5432"
+      # Alterado para 5433 para não sobrescrever o banco antigo (5432) e preservar dados valiosos
+      - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_nfc_data:/var/lib/postgresql/data
 
 volumes:
-  postgres_data:
+  # Alterado de postgres_data para postgres_nfc_data para garantir 100% que os dados antigos fiquem intactos
+  postgres_nfc_data:

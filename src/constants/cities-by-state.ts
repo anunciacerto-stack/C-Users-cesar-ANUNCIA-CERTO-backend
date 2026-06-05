@@ -1,0 +1,15 @@
+﻿export const CITIES_BY_STATE: Record<string, string[]> = {
+  GO: ['Goiania', 'Aparecida de Goiania', 'Anapolis'],
+  MT: ['Cuiaba', 'Varzea Grande', 'Rondonopolis'],
+  MS: ['Campo Grande', 'Dourados', 'Tres Lagoas'],
+  SP: ['Sao Paulo', 'Campinas', 'Santos'],
+  RJ: ['Rio de Janeiro', 'Niteroi', 'Petropolis'],
+  MG: ['Belo Horizonte', 'Uberlandia', 'Juiz de Fora'],
+  PR: ['Curitiba', 'Londrina', 'Maringa'],
+  SC: ['Florianopolis', 'Joinville', 'Blumenau'],
+  RS: ['Porto Alegre', 'Caxias do Sul', 'Pelotas'],
+  BA: ['Salvador', 'Feira de Santana', 'Vitoria da Conquista'],
+  PE: ['Recife', 'Olinda', 'Caruaru'],
+  CE: ['Fortaleza', 'Caucaia', 'Juazeiro do Norte'],
+  DF: ['Brasilia', 'Taguatinga', 'Ceilandia'],
+};

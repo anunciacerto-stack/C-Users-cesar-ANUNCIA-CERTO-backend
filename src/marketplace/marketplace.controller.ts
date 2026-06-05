@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Delete,
@@ -6,17 +6,44 @@ import {
   NotFoundException,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
+import { CreateListingDto } from './dto/create-listing.dto';
 import { MarketplaceService } from './marketplace.service';
 
 @Controller('marketplace')
 export class MarketplaceController {
   constructor(private readonly marketplaceService: MarketplaceService) {}
 
+  @Post()
+  async createListing(@Body() dto: CreateListingDto) {
+    const listing = await this.marketplaceService.createListing(dto);
+    return { data: listing };
+  }
+
   @Get()
-  getStatus() {
-    return this.marketplaceService.getStatus();
+  async listAllListings() {
+    const listings = await this.marketplaceService.listAllListings();
+    return { data: listings };
+  }
+
+  @Get('category/:category')
+  async listByCategory(@Param('category') category: string) {
+    const listings = await this.marketplaceService.listByCategory(category);
+    return { data: listings };
+  }
+
+  @Get('state/:state')
+  async listByState(@Param('state') state: string) {
+    const listings = await this.marketplaceService.listByState(state);
+    return { data: listings };
+  }
+
+  @Get('city/:city')
+  async listByCity(@Param('city') city: string) {
+    const listings = await this.marketplaceService.listByCity(city);
+    return { data: listings };
   }
 
   @Get('categories')
@@ -35,7 +62,7 @@ export class MarketplaceController {
       cidade: string;
       estado: string;
       fotos?: string[];
-      userId?: number;
+      userId?: string;
     },
   ) {
     return this.marketplaceService.createClassified(body);
@@ -72,7 +99,7 @@ export class MarketplaceController {
       conteudo: string;
       categoria: string;
       fotos?: string[];
-      userId?: number;
+      userId?: string;
     },
   ) {
     return this.marketplaceService.createMuralPost(body);
@@ -93,7 +120,7 @@ export class MarketplaceController {
       cidade: string;
       estado: string;
       fotos?: string[];
-      userId?: number;
+      userId?: string;
     },
   ) {
     return this.marketplaceService.createDonation(body);
@@ -102,5 +129,14 @@ export class MarketplaceController {
   @Get('donations')
   async listDonations() {
     return this.marketplaceService.listDonations();
+  }
+
+  @Get(':id')
+  async getListingById(@Param('id', new ParseUUIDPipe()) id: string) {
+    const listing = await this.marketplaceService.getListingById(id);
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+    return { data: listing };
   }
 }

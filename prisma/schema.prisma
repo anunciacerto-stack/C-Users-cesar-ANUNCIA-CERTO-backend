@@ -8,14 +8,24 @@ datasource db {
 }
 
 model User {
-  id         Int          @id @default(autoincrement())
-  name       String
-  email      String       @unique
-  password   String
-  created_at DateTime     @default(now())
-  classifieds Classified[]
-  muralPosts MuralPost[]
-  donations  Donation[]
+  id                  String            @id @default(uuid())
+  name                String
+  email               String            @unique
+  password            String
+  phone               String?
+  role                String            @default("user")
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  classifieds         Classified[]
+  muralPosts          MuralPost[]
+  donations           Donation[]
+  listings            ListingProfile[]
+  marketplaceListings Listing[]
+  propertyListings    PropertyListing[]
+  animalListings      AnimalListing[]
+  nfcTags             NfcTag[]
+  botConfig           BotConfig?
+  botTrades           BotTrade[]
 }
 
 model Classified {
@@ -28,7 +38,7 @@ model Classified {
   estado     String
   fotos      String[]
   created_at DateTime @default(now())
-  userId     Int?
+  userId     String?
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
@@ -41,7 +51,7 @@ model MuralPost {
   categoria  String
   fotos      String[]
   created_at DateTime @default(now())
-  userId     Int?
+  userId     String?
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
@@ -56,7 +66,7 @@ model Donation {
   estado     String
   fotos      String[]
   created_at DateTime @default(now())
-  userId     Int?
+  userId     String?
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
@@ -71,4 +81,178 @@ model Category {
 
   @@unique([nome, parentId])
   @@index([parentId])
+}
+
+model ListingProfile {
+  id                 String   @id @default(uuid())
+  tipoEntrada        String
+  categoriaPrincipal String
+  subcategoria       String?
+  titulo             String
+  descricao          String
+  telefone           String?
+  whatsapp           String?
+  emailContato       String?
+  facebook           String?
+  instagram          String?
+  estado             String
+  cidade             String
+  bairro             String?
+  endereco           String?
+  cep                String?
+  destaque           Boolean  @default(false)
+  plano              String   @default("base")
+  qrEnabled          Boolean  @default(false)
+  nfcEnabled         Boolean  @default(false)
+  status             String   @default("ativo")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  userId             String?
+  user               User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([categoriaPrincipal, subcategoria])
+  @@index([estado, cidade])
+}
+
+model Listing {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  price       Float
+  category    String
+  subcategory String
+  state       String
+  city        String
+  images      String[]
+  qrEnabled   Boolean  @default(false)
+  nfcEnabled  Boolean  @default(false)
+  ownerId     String
+  createdAt   DateTime @default(now())
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([category])
+  @@index([state])
+  @@index([city])
+}
+
+model PropertyListing {
+  id              String   @id @default(uuid())
+  ownerId         String
+  title           String
+  description     String
+  propertyType    String
+  transactionType String
+  price           Float
+  state           String
+  city            String
+  neighborhood    String?
+  address         String?
+  cep             String?
+  bedrooms        Int?
+  bathrooms       Int?
+  parkingSpots    Int?
+  area            Float?
+  images          String[]
+  qrEnabled       Boolean  @default(false)
+  nfcEnabled      Boolean  @default(false)
+  publicCode      String   @unique
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  owner           User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([propertyType])
+  @@index([state])
+  @@index([city])
+  @@index([publicCode])
+}
+
+model AnimalListing {
+  id         String   @id @default(uuid())
+  ownerId    String
+  title      String
+  description String
+  animalType String
+  breed      String?
+  sex        String?
+  age        String?
+  weight     Float?
+  price      Float?
+  state      String
+  city       String
+  tags       String[]
+  images     String[]
+  qrEnabled  Boolean  @default(false)
+  nfcEnabled Boolean  @default(false)
+  publicCode String   @unique
+  status     String   @default("active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([animalType])
+  @@index([state])
+  @@index([city])
+  @@index([publicCode])
+}
+
+model NfcTag {
+  id          String     @id @default(uuid())
+  tagId       String     @unique
+  targetId    String?    
+  targetType  String?    
+  status      String     @default("active")
+  ownerId     String?
+  owner       User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  scans       NfcScan[]
+
+  @@index([ownerId])
+  @@index([targetId])
+}
+
+model NfcScan {
+  id          String   @id @default(uuid())
+  tagId       String
+  tag         NfcTag   @relation(fields: [tagId], references: [tagId], onDelete: Cascade)
+  scannedAt   DateTime @default(now())
+  userAgent   String?
+  ipAddress   String?
+
+  @@index([tagId])
+}
+
+model BotConfig {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  binanceApiKey  String?
+  binanceApiSecret String?
+  symbol         String   @default("SOL/USDT")
+  tradeAmount    Float    @default(12.0)
+  isActive       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model BotTrade {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset     String
+  type      String   // "COMPRA" ou "VENDA"
+  price     Float
+  amount    Float
+  value     Float
+  profitPct String?  // Lucro em percentual (ex: "+2.00%")
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

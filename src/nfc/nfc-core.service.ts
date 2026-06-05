@@ -1,10 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 
 export interface NfcRegisterInput {
   tagId?: string;
   tag_id?: string;
   objectId?: string;
   object_id?: string;
+  targetType?: string;
   userId?: string;
   user_id?: string;
 }
@@ -13,52 +15,44 @@ export interface NfcUpdateInput extends NfcRegisterInput {
   status?: string;
 }
 
-export interface NfcCoreRecord {
-  id: string;
-  tag_id: string;
-  object_id: string;
-  user_id: string;
-  status: string;
-  message: string;
-  created_at: string;
-  updated_at: string;
-}
-
 @Injectable()
 export class NfcCoreService {
-  private readonly recordsByObjectId = new Map<string, NfcCoreRecord>();
-  private readonly objectIdByTagId = new Map<string, string>();
-  private readonly timeline: NfcCoreRecord[] = [];
+  constructor(private readonly prisma: PrismaService) {}
 
-  register(input: NfcRegisterInput): NfcCoreRecord {
+  async register(input: NfcRegisterInput) {
     const tagId = this.normalizeId(input.tagId ?? input.tag_id);
     const objectIdInput = this.normalizeId(input.objectId ?? input.object_id);
     const userId = this.normalizeUser(input.userId ?? input.user_id);
+    const targetType = input.targetType ?? 'general';
 
     if (!tagId) {
       throw new BadRequestException('tagId is required');
     }
 
-    const resolvedObjectId = objectIdInput || this.objectIdByTagId.get(tagId) || tagId;
-    const now = new Date().toISOString();
-    const existing = this.recordsByObjectId.get(resolvedObjectId);
+    const existingTag = await this.prisma.nfcTag.findUnique({ where: { tagId } });
 
-    const record: NfcCoreRecord = {
-      id: existing?.id ?? `nfc_${Date.now()}`,
-      tag_id: tagId,
-      object_id: resolvedObjectId,
-      user_id: userId,
-      status: existing?.status ?? 'registered',
-      message: existing ? 'NFC atualizado com dados de registro' : 'NFC registrado com sucesso',
-      created_at: existing?.created_at ?? now,
-      updated_at: now,
-    };
+    if (existingTag) {
+      return this.prisma.nfcTag.update({
+        where: { tagId },
+        data: {
+          targetId: objectIdInput || existingTag.targetId,
+          targetType,
+          ownerId: userId !== 'system' ? userId : existingTag.ownerId,
+        },
+      });
+    }
 
-    this.store(record);
-    return record;
+    return this.prisma.nfcTag.create({
+      data: {
+        tagId,
+        targetId: objectIdInput,
+        targetType,
+        ownerId: userId !== 'system' ? userId : null,
+      },
+    });
   }
 
-  update(input: NfcUpdateInput): NfcCoreRecord {
+  async update(input: NfcUpdateInput) {
     const tagId = this.normalizeId(input.tagId ?? input.tag_id);
     const objectIdInput = this.normalizeId(input.objectId ?? input.object_id);
     const userId = this.normalizeUser(input.userId ?? input.user_id);
@@ -72,44 +66,78 @@ export class NfcCoreService {
       throw new BadRequestException('status is required');
     }
 
-    const resolvedObjectId = objectIdInput || this.objectIdByTagId.get(tagId) || tagId;
-    const now = new Date().toISOString();
-    const existing = this.recordsByObjectId.get(resolvedObjectId);
+    const existingTag = await this.prisma.nfcTag.findUnique({ where: { tagId } });
 
-    const record: NfcCoreRecord = {
-      id: existing?.id ?? `nfc_${Date.now()}`,
-      tag_id: tagId,
-      object_id: resolvedObjectId,
-      user_id: userId,
-      status,
-      message: 'NFC atualizado com sucesso',
-      created_at: existing?.created_at ?? now,
-      updated_at: now,
-    };
+    if (!existingTag) {
+      throw new BadRequestException('NFC tag not found');
+    }
 
-    this.store(record);
-    return record;
+    return this.prisma.nfcTag.update({
+      where: { tagId },
+      data: {
+        status,
+        targetId: objectIdInput || existingTag.targetId,
+        ownerId: userId !== 'system' ? userId : existingTag.ownerId,
+      },
+    });
   }
 
-  getStatus(objectId: string): string {
+  async getStatus(objectId: string) {
     const normalizedObjectId = this.normalizeId(objectId);
     if (!normalizedObjectId) {
       return 'UNKNOWN';
     }
-    return this.recordsByObjectId.get(normalizedObjectId)?.status ?? 'UNKNOWN';
+    const tag = await this.prisma.nfcTag.findFirst({
+      where: { targetId: normalizedObjectId },
+    });
+    return tag?.status ?? 'UNKNOWN';
   }
 
-  history(limit = 100): NfcCoreRecord[] {
-    return this.timeline.slice(0, Math.max(1, limit));
+  async history(limit = 100) {
+    return this.prisma.nfcTag.findMany({
+      take: Math.max(1, limit),
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        owner: { select: { name: true, email: true } }
+      }
+    });
   }
 
-  private store(record: NfcCoreRecord) {
-    this.recordsByObjectId.set(record.object_id, record);
-    this.objectIdByTagId.set(record.tag_id, record.object_id);
-    this.timeline.unshift(record);
-    if (this.timeline.length > 500) {
-      this.timeline.pop();
+  async registerScan(tagId: string, userAgent?: string, ipAddress?: string) {
+    const tag = await this.prisma.nfcTag.findUnique({ where: { tagId } });
+    if (!tag) {
+      throw new BadRequestException('NFC tag not found');
     }
+    return this.prisma.nfcScan.create({
+      data: {
+        tagId,
+        userAgent,
+        ipAddress,
+      },
+    });
+  }
+
+  async getAnalytics(tagId: string) {
+    const tag = await this.prisma.nfcTag.findUnique({ where: { tagId } });
+    if (!tag) {
+      throw new BadRequestException('NFC tag not found');
+    }
+
+    const totalScans = await this.prisma.nfcScan.count({ where: { tagId } });
+    
+    const recentScans = await this.prisma.nfcScan.findMany({
+      where: { tagId },
+      orderBy: { scannedAt: 'desc' },
+      take: 100,
+    });
+
+    return {
+      tagId: tag.tagId,
+      targetId: tag.targetId,
+      status: tag.status,
+      totalScans,
+      recentScans,
+    };
   }
 
   private normalizeId(value?: string): string {
@@ -119,5 +147,57 @@ export class NfcCoreService {
   private normalizeUser(value?: string): string {
     const userId = (value ?? '').trim();
     return userId || 'system';
+  }
+
+  async resolveTag(tagId: string) {
+    const normalizedTagId = this.normalizeId(tagId);
+    if (!normalizedTagId) {
+      throw new BadRequestException('tagId is required');
+    }
+
+    const tag = await this.prisma.nfcTag.findUnique({ where: { tagId: normalizedTagId } });
+    if (!tag) {
+      return { category: 'unknown', data: null };
+    }
+
+    const targetId = tag.targetId;
+    const targetType = (tag.targetType ?? '').toLowerCase().trim();
+
+    if (!targetId) {
+      return { category: targetType || 'unknown', data: null };
+    }
+
+    let data: any = null;
+
+    try {
+      if (targetType === 'veiculo' || targetType === 'classified' || targetType === 'veiculos') {
+        const numericId = parseInt(targetId, 10);
+        if (!isNaN(numericId)) {
+          data = await this.prisma.classified.findUnique({ where: { id: numericId } });
+        }
+      } else if (targetType === 'pet' || targetType === 'animal' || targetType === 'pets') {
+        data = await this.prisma.animalListing.findUnique({ where: { id: targetId } });
+      } else if (targetType === 'imovel' || targetType === 'property' || targetType === 'imoveis') {
+        data = await this.prisma.propertyListing.findUnique({ where: { id: targetId } });
+      } else {
+        const numericId = parseInt(targetId, 10);
+        if (!isNaN(numericId)) {
+          data = await this.prisma.classified.findUnique({ where: { id: numericId } });
+          if (data) return { category: 'veiculo', data };
+        }
+        data = await this.prisma.animalListing.findUnique({ where: { id: targetId } });
+        if (data) return { category: 'pet', data };
+
+        data = await this.prisma.propertyListing.findUnique({ where: { id: targetId } });
+        if (data) return { category: 'imovel', data };
+      }
+    } catch (e) {
+      // Ignora erro
+    }
+
+    return {
+      category: targetType || 'unknown',
+      data
+    };
   }
 }

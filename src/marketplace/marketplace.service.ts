@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+﻿import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateListingDto } from './dto/create-listing.dto';
 
 export type CategoryTree = Record<string, string[]>;
 
@@ -11,7 +12,7 @@ export interface CreateClassifiedInput {
   cidade: string;
   estado: string;
   fotos?: string[];
-  userId?: number;
+  userId?: string;
 }
 
 export interface CreateMuralInput {
@@ -19,7 +20,7 @@ export interface CreateMuralInput {
   conteudo: string;
   categoria: string;
   fotos?: string[];
-  userId?: number;
+  userId?: string;
 }
 
 export interface CreateDonationInput {
@@ -29,15 +30,77 @@ export interface CreateDonationInput {
   cidade: string;
   estado: string;
   fotos?: string[];
-  userId?: number;
+  userId?: string;
 }
 
 @Injectable()
 export class MarketplaceService {
   constructor(private readonly prisma: PrismaService) {}
 
-  getStatus() {
-    return { status: 'marketplace module working' };
+  async createListing(dto: CreateListingDto) {
+    const owner = await this.prisma.user.findUnique({
+      where: { id: dto.ownerId },
+      select: { id: true },
+    });
+
+    if (!owner) {
+      throw new BadRequestException('Owner user not found');
+    }
+
+    return this.prisma.listing.create({
+      data: {
+        title: dto.title,
+        description: dto.description,
+        price: dto.price,
+        category: dto.category,
+        subcategory: dto.subcategory,
+        state: dto.state,
+        city: dto.city,
+        images: dto.images,
+        qrEnabled: dto.qrEnabled,
+        nfcEnabled: dto.nfcEnabled,
+        ownerId: dto.ownerId,
+      },
+      select: this.listingSelect(),
+    });
+  }
+
+  listAllListings() {
+    return this.prisma.listing.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: this.listingSelect(),
+    });
+  }
+
+  listByCategory(category: string) {
+    return this.prisma.listing.findMany({
+      where: { category: { equals: category, mode: 'insensitive' } },
+      orderBy: { createdAt: 'desc' },
+      select: this.listingSelect(),
+    });
+  }
+
+  listByState(state: string) {
+    return this.prisma.listing.findMany({
+      where: { state: { equals: state, mode: 'insensitive' } },
+      orderBy: { createdAt: 'desc' },
+      select: this.listingSelect(),
+    });
+  }
+
+  listByCity(city: string) {
+    return this.prisma.listing.findMany({
+      where: { city: { equals: city, mode: 'insensitive' } },
+      orderBy: { createdAt: 'desc' },
+      select: this.listingSelect(),
+    });
+  }
+
+  getListingById(id: string) {
+    return this.prisma.listing.findUnique({
+      where: { id },
+      select: this.listingSelect(),
+    });
   }
 
   async getCategories() {
@@ -146,6 +209,32 @@ export class MarketplaceService {
     });
   }
 
+  private listingSelect() {
+    return {
+      id: true,
+      title: true,
+      description: true,
+      price: true,
+      category: true,
+      subcategory: true,
+      state: true,
+      city: true,
+      images: true,
+      qrEnabled: true,
+      nfcEnabled: true,
+      ownerId: true,
+      createdAt: true,
+      owner: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+        },
+      },
+    };
+  }
+
   private async ensureDefaultCategories() {
     const count = await this.prisma.category.count();
     if (count > 0) {
@@ -174,7 +263,7 @@ export class MarketplaceService {
     });
   }
 
-  private async resolveUserId(userId?: number) {
+  private async resolveUserId(userId?: string) {
     if (!userId) {
       return null;
     }
