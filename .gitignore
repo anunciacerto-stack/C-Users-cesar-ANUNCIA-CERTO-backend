@@ -59,9 +59,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 binance_bot/.env
 binance_bot/bot_state.json
 binance_bot/bot_backup_before_sync.py
-binance_bot/bot_a.py
-binance_bot/bot_b.py
-binance_bot/config_a.py
-binance_bot/config_b.py
 binance_bot/__pycache__/
+
 
