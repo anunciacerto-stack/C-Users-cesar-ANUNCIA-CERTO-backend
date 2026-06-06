@@ -32,6 +32,7 @@ RUN npm run build
 # Make start script executable
 RUN chmod +x start.sh
 
+ENV PYTHONUNBUFFERED=1
 ENV NODE_ENV=production
 EXPOSE 3000
 
