@@ -7,12 +7,28 @@ export class BotController {
 
   @Get('config')
   async getConfig(@Query('userId') userId?: string) {
-    return this.botService.getConfig(userId);
+    console.log(`[GET /bot/config] Query userId: ${userId}`);
+    try {
+      const result = await this.botService.getConfig(userId);
+      console.log(`[GET /bot/config] Success: isActive=${result.isActive}`);
+      return result;
+    } catch (err) {
+      console.error(`[GET /bot/config] Error:`, err);
+      throw err;
+    }
   }
 
   @Post('config')
   async saveConfig(@Body() body: SaveConfigDto) {
-    return this.botService.saveConfig(body);
+    console.log(`[POST /bot/config] Body:`, JSON.stringify(body));
+    try {
+      const result = await this.botService.saveConfig(body);
+      console.log(`[POST /bot/config] Success: isActive=${result.isActive}`);
+      return result;
+    } catch (err) {
+      console.error(`[POST /bot/config] Error:`, err);
+      throw err;
+    }
   }
 
   @Post('trades')

@@ -7,6 +7,13 @@ import ccxt
 import pandas as pd
 import numpy as np
 from dotenv import load_dotenv
+import sys
+import io
+
+# Garante que a saída padrão no console suporte UTF-8 e trate caracteres especiais/emojis sem quebrar
+if sys.platform.startswith('win'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
 
 # Carrega as configurações de variáveis de ambiente (.env)
 load_dotenv()
@@ -299,7 +306,7 @@ def run_trading_bot():
                     state['is_partial_executed'] = False
                     save_state(state)
                 
-                print(f"\r[STATUS] Robô desativado na nuvem. Aguardando ativação via App... | Horário: {datetime.datetime.now().strftime('%H:%M:%S')}", end="")
+                print(f"\r[STATUS] Robô desativado na nuvem. Aguardando ativação via App... | Horário: {datetime.datetime.now().strftime('%H:%M:%S')}", end="", flush=True)
                 time.sleep(15)
                 continue
 
@@ -329,7 +336,7 @@ def run_trading_bot():
             ticker = exchange.fetch_ticker(symbol)
             current_price = ticker['last']
             
-            print(f"\r[STATUS] Ativo: {symbol} | Preço Atual: ${current_price:.2f} | Posicionado: {state['in_position']} | Horário: {datetime.datetime.now().strftime('%H:%M:%S')}", end="")
+            print(f"\r[STATUS] Ativo: {symbol} | Preço Atual: ${current_price:.2f} | Posicionado: {state['in_position']} | Horário: {datetime.datetime.now().strftime('%H:%M:%S')}", end="", flush=True)
 
             # --- CASO 1: ROBÔ POSICIONADO (MONITORAMENTO DO MOTOR DE DEFESA) ---
             if state['in_position']:
