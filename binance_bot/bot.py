@@ -18,6 +18,11 @@ if sys.platform.startswith('win'):
 # Carrega as configurações de variáveis de ambiente (.env)
 load_dotenv()
 
+# Configurações globais de integração com o backend NestJS
+PORT = os.getenv('PORT', '3000')
+BACKEND_URL = os.getenv('BACKEND_URL', f'http://localhost:{PORT}')
+USER_ID = os.getenv('USER_ID', 'guest')
+
 # Importa as configurações operacionais
 import config
 
@@ -28,10 +33,8 @@ STATE_FILE = 'bot_state.json'
 
 def fetch_backend_config():
     """Busca as configurações do robô no backend NestJS."""
-    backend_url = os.getenv('BACKEND_URL', 'http://localhost:3000')
-    user_id = os.getenv('USER_ID', 'guest')
     try:
-        response = requests.get(f"{backend_url}/bot/config?userId={user_id}", timeout=10)
+        response = requests.get(f"{BACKEND_URL}/bot/config?userId={USER_ID}", timeout=10)
         if response.status_code == 200:
             return response.json()
         else:
@@ -42,10 +45,8 @@ def fetch_backend_config():
 
 def register_trade_backend(asset, trade_type, price, amount, value, profit_pct=None):
     """Registra uma transação no backend para aparecer no histórico do app."""
-    backend_url = os.getenv('BACKEND_URL', 'http://localhost:3000')
-    user_id = os.getenv('USER_ID', 'guest')
     payload = {
-        'userId': user_id,
+        'userId': USER_ID,
         'asset': asset,
         'type': trade_type,
         'price': float(price),
@@ -573,8 +574,8 @@ def run_trading_bot():
             print(f"\n[ERRO DE AUTENTICAÇÃO] Credenciais inválidas na Binance: {ae}. Desativando robô para segurança...")
             if backend_config is not None:
                 try:
-                    requests.post(f"{os.getenv('BACKEND_URL', 'http://localhost:3000')}/bot/config", json={
-                        'userId': os.getenv('USER_ID', 'guest'),
+                    requests.post(f"{BACKEND_URL}/bot/config", json={
+                        'userId': USER_ID,
                         'isActive': False
                     }, timeout=10)
                 except Exception as ex:
