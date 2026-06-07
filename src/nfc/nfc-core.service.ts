@@ -23,7 +23,19 @@ export class NfcCoreService {
     const tagId = this.normalizeId(input.tagId ?? input.tag_id);
     const objectIdInput = this.normalizeId(input.objectId ?? input.object_id);
     const userId = this.normalizeUser(input.userId ?? input.user_id);
-    const targetType = input.targetType ?? 'general';
+    
+    let targetType = input.targetType ?? 'general';
+    if (objectIdInput.startsWith('veiculo:')) {
+      targetType = 'veiculo';
+    } else if (objectIdInput.startsWith('proprietario:')) {
+      targetType = 'proprietario';
+    } else if (objectIdInput.startsWith('wifi:')) {
+      targetType = 'wifi';
+    } else if (objectIdInput.startsWith('url:')) {
+      targetType = 'url';
+    } else if (objectIdInput.startsWith('text:')) {
+      targetType = 'text';
+    }
 
     if (!tagId) {
       throw new BadRequestException('tagId is required');
@@ -37,7 +49,7 @@ export class NfcCoreService {
         data: {
           targetId: objectIdInput || existingTag.targetId,
           targetType,
-          ownerId: userId !== 'system' ? userId : existingTag.ownerId,
+          ownerId: this.resolveOwnerId(userId) ?? existingTag.ownerId,
         },
       });
     }
@@ -47,7 +59,7 @@ export class NfcCoreService {
         tagId,
         targetId: objectIdInput,
         targetType,
-        ownerId: userId !== 'system' ? userId : null,
+        ownerId: this.resolveOwnerId(userId),
       },
     });
   }
@@ -57,6 +69,19 @@ export class NfcCoreService {
     const objectIdInput = this.normalizeId(input.objectId ?? input.object_id);
     const userId = this.normalizeUser(input.userId ?? input.user_id);
     const status = (input.status ?? '').trim();
+
+    let targetType = input.targetType ?? 'general';
+    if (objectIdInput.startsWith('veiculo:')) {
+      targetType = 'veiculo';
+    } else if (objectIdInput.startsWith('proprietario:')) {
+      targetType = 'proprietario';
+    } else if (objectIdInput.startsWith('wifi:')) {
+      targetType = 'wifi';
+    } else if (objectIdInput.startsWith('url:')) {
+      targetType = 'url';
+    } else if (objectIdInput.startsWith('text:')) {
+      targetType = 'text';
+    }
 
     if (!tagId) {
       throw new BadRequestException('tagId is required');
@@ -77,7 +102,8 @@ export class NfcCoreService {
       data: {
         status,
         targetId: objectIdInput || existingTag.targetId,
-        ownerId: userId !== 'system' ? userId : existingTag.ownerId,
+        targetType: targetType !== 'general' ? targetType : existingTag.targetType,
+        ownerId: this.resolveOwnerId(userId) ?? existingTag.ownerId,
       },
     });
   }
@@ -149,26 +175,133 @@ export class NfcCoreService {
     return userId || 'system';
   }
 
+  /**
+   * Valida se a string é um UUID v4 válido para uso como FK.
+   * Strings como "usuario:anonimo" ou "system" não são UUIDs válidos.
+   */
+  private isValidUuid(value: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(value);
+  }
+
+  /**
+   * Resolve o ownerId para FK: retorna null se o userId não for UUID ou for 'system'.
+   * Evita erro de FK no PostgreSQL com strings inválidas.
+   */
+  private resolveOwnerId(userId: string): string | null {
+    if (userId === 'system' || !this.isValidUuid(userId)) {
+      return null;
+    }
+    return userId;
+  }
+
   async resolveTag(tagId: string) {
     const normalizedTagId = this.normalizeId(tagId);
     if (!normalizedTagId) {
       throw new BadRequestException('tagId is required');
     }
 
-    const tag = await this.prisma.nfcTag.findUnique({ where: { tagId: normalizedTagId } });
-    if (!tag) {
-      return { category: 'unknown', data: null };
-    }
+    let targetId = normalizedTagId;
+    let targetType = 'unknown';
 
-    const targetId = tag.targetId;
-    const targetType = (tag.targetType ?? '').toLowerCase().trim();
+    // 1. Tenta buscar a tag pelo hardware tagId no banco
+    const tag = await this.prisma.nfcTag.findUnique({ where: { tagId: normalizedTagId } });
+    if (tag) {
+      targetId = tag.targetId || '';
+      targetType = (tag.targetType || 'unknown').toLowerCase().trim();
+    } else {
+      // Se não encontrou, talvez a própria string consultada seja o payload
+      if (normalizedTagId.startsWith('veiculo:')) {
+        targetType = 'veiculo';
+      } else if (normalizedTagId.startsWith('proprietario:')) {
+        targetType = 'proprietario';
+      } else if (normalizedTagId.startsWith('wifi:')) {
+        targetType = 'wifi';
+      } else if (normalizedTagId.startsWith('url:')) {
+        targetType = 'url';
+      } else if (normalizedTagId.startsWith('text:')) {
+        targetType = 'text';
+      }
+    }
 
     if (!targetId) {
-      return { category: targetType || 'unknown', data: null };
+      return { category: targetType, data: null };
     }
 
-    let data: any = null;
+    // 2. Se o targetId começar com os prefixos estruturados, realiza o parsing inteligente
+    if (targetId.startsWith('veiculo:')) {
+      const content = targetId.substring(8); // remove 'veiculo:'
+      const parts = content.split('|');
+      const plate = parts[0] || 'Desconhecida';
+      const model = parts[1] || 'Veículo';
+      const color = parts[2] || 'Não informada';
+      return {
+        category: 'veiculo',
+        data: {
+          titulo: model,
+          title: model,
+          preco: null,
+          price: null,
+          categoria: 'Veículo',
+          cidade: 'Placa: ' + plate,
+          estado: 'Cor: ' + color,
+          descricao: `Placa: ${plate}\nCor: ${color}`,
+        }
+      };
+    }
 
+    if (targetId.startsWith('proprietario:')) {
+      const content = targetId.substring(13); // remove 'proprietario:'
+      const parts = content.split('|');
+      const name = parts[0] || 'Desconhecido';
+      const email = parts[1] || 'Não informado';
+      const phone = parts[2] || 'Não informado';
+      return {
+        category: 'proprietario',
+        data: {
+          nome: name,
+          email: email,
+          telefone: phone,
+        }
+      };
+    }
+
+    if (targetId.startsWith('wifi:')) {
+      const content = targetId.substring(5); // remove 'wifi:'
+      const parts = content.split(':');
+      const ssid = parts[0] || 'Rede Sem Nome';
+      const password = parts[1] || '';
+      return {
+        category: 'wifi',
+        data: {
+          rede: ssid,
+          senha: password,
+        }
+      };
+    }
+
+    if (targetId.startsWith('url:')) {
+      const url = targetId.substring(4);
+      return {
+        category: 'url',
+        data: {
+          link: url,
+        }
+      };
+    }
+
+    if (targetId.startsWith('text:')) {
+      const text = targetId.substring(5);
+      return {
+        category: 'text',
+        data: {
+          conteudo: text,
+        }
+      };
+    }
+
+    // 3. Fallback para busca convencional de IDs no banco de dados para classificados, animais ou imóveis
+    let data: any = null;
     try {
       if (targetType === 'veiculo' || targetType === 'classified' || targetType === 'veiculos') {
         const numericId = parseInt(targetId, 10);
@@ -192,7 +325,7 @@ export class NfcCoreService {
         if (data) return { category: 'imovel', data };
       }
     } catch (e) {
-      // Ignora erro
+      // Ignora erro de banco
     }
 
     return {

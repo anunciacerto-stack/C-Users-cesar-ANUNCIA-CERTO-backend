@@ -97,6 +97,15 @@ export class BotService {
 
   async saveConfig(dto: SaveConfigDto) {
     const userId = await this.ensureUserExists(dto.userId || 'guest');
+
+    // Se estiver tentando ativar o robô, valida a assinatura (role == 'subscriber')
+    if (dto.isActive === true) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (user && user.role !== 'subscriber' && userId !== 'guest') {
+        throw new BadRequestException('Assinatura inativa. Ative sua licença via PIX no aplicativo.');
+      }
+    }
+
     const existing = await this.prisma.botConfig.findUnique({ where: { userId } });
 
     if (existing) {

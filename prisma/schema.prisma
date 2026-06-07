@@ -26,6 +26,7 @@ model User {
   nfcTags             NfcTag[]
   botConfig           BotConfig?
   botTrades           BotTrade[]
+  payments            Payment[]
 }
 
 model Classified {
@@ -253,6 +254,20 @@ model BotTrade {
   value     Float
   profitPct String?  // Lucro em percentual (ex: "+2.00%")
   createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Float
+  mpId      String   @unique // ID do pagamento retornado pelo Mercado Pago
+  status    String   @default("pending") // "pending", "approved", "rejected"
+  type      String   @default("subscription") // "subscription" ou "deposit"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
 }
