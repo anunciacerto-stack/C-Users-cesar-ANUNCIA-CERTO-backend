@@ -1,44 +1,61 @@
-# CONFIGURAÇÕES DO BOT B - REVERSÃO À MÉDIA (MEAN REVERSION - BANDAS DE BOLLINGER)
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  BOT B — BTC/USDT — REVERSÃO BANDAS BOLLINGER + STOCH RSI       ║
+# ║  Estratégia: Mean Reversion com Squeeze Momentum                 ║
+# ║  Filtros: BB squeeze → explosão + RSI divergência                ║
+# ╚══════════════════════════════════════════════════════════════════╝
 
-# Ativo de negociação e tempo gráfico
 SYMBOL = 'BTC/USDT'
-TIMEFRAME = '15m'
+TIMEFRAME = '5m'           # 5m para capturas mais frequentes em reversão
+TIMEFRAME_MACRO = '1h'     # Filtro de tendência macro
 
-# Valor simulado a ser investido por operação: ~$1.700 (ou $300 USD)
-# Ajustado para $12.0 que é o mínimo real para ordens da Binance Spot
 TRADE_AMOUNT_USDT = 12.0
 
-# ----------------- MOTOR DE DEFESA E RISCO MÍNIMO -----------------
-# Stop Loss Inicial: 1.2% (Perda máxima por trade: ~$3.60)
-# Mais curto porque se perder a média, devemos estancar a perda rápido
+# ─── STOPS DINÂMICOS POR ATR ──────────────────────────────────────────
+USE_ATR_STOPS = True
+ATR_PERIOD = 14
+ATR_STOP_MULTIPLIER = 1.2   # Stop mais apertado (reversão tem targets menores)
+ATR_TP1_MULTIPLIER = 1.5
+ATR_TP2_MULTIPLIER = 3.0
+
+# Fallback percentual
 STOP_LOSS_PCT = 0.012
+TAKE_PROFIT_1_PCT = 0.015
+TAKE_PROFIT_2_PCT = 0.030
 
-# Alvo Parcial (Take Profit 1 - TP1): 0.8% (Lucro parcial: ~$1.44)
-TAKE_PROFIT_1_PCT = 0.008
-
-# Fração a fechar no TP1: 60% da posição
-PARTIAL_EXIT_PCT = 0.60
-
-# Ativar Breakeven (Risco Zero após TP1)?
+# ─── GESTÃO DE POSIÇÃO ────────────────────────────────────────────────
+PARTIAL_EXIT_PCT = 0.60     # Fecha 60% no TP1
 ACTIVATE_BREAKEVEN = True
+TRAILING_STOP = True
+TRAILING_STOP_PCT = 0.010   # 1.0% trailing (BTC mais previsível)
 
-# Alvo Final (Take Profit 2 - TP2): 2.0%
-TAKE_PROFIT_2_PCT = 0.020
+# ─── FILTROS ─────────────────────────────────────────────────────────
+VOLUME_FILTER = True
+VOLUME_MA_PERIOD = 20
+VOLUME_MIN_RATIO = 1.5      # Exige 150% de volume no candle de reversão
 
-# Trava diária de prejuízo máximo
-MAX_DAILY_LOSS_USDT = 50.0
+TIME_FILTER = True
+TRADING_HOURS_UTC_START = 7
+TRADING_HOURS_UTC_END = 23
 
-# Meta diária de lucro máximo
-MAX_DAILY_PROFIT_USDT = 150.0
+# ─── BOLLINGER BANDS + SQUEEZE ────────────────────────────────────────
+BOLLINGER_PERIOD = 20
+BOLLINGER_DEV = 2.0
+# Squeeze: BB dentro das Keltner Channels indica compressão antes da explosão
+KELTNER_ATR_MULT = 1.5      # Multiplicador ATR para Keltner Channels
 
-# ----------------- INDICADORES TÉCNICOS (BANDAS DE BOLLINGER) -----------------
-BOLLINGER_PERIOD = 20    # Período da Média Simples das bandas
-BOLLINGER_DEV = 2        # Desvios Padrão para abrir as bandas superiores e inferiores
-RSI_PERIOD = 14          # RSI para filtro de força do movimento
-RSI_OVERSOLD = 30        # Indica se está sobrevendido (segurança extra para comprar)
+# ─── RSI E STOCHASTIC RSI ─────────────────────────────────────────────
+RSI_PERIOD = 14
+RSI_OVERSOLD = 35           # Mais permissivo pois BB confirma a reversão
+RSI_OVERBOUGHT = 70
+STOCH_RSI_PERIOD = 14
+STOCH_RSI_SMOOTH_K = 3
+STOCH_RSI_SMOOTH_D = 3
+STOCH_RSI_OVERSOLD = 20     # Stoch RSI muito sobrevendido = sinal forte
 
-# Nome do arquivo de estado
+# ─── PROTEÇÃO DIÁRIA ─────────────────────────────────────────────────
+MAX_DAILY_LOSS_USDT = 15.0
+MAX_DAILY_PROFIT_USDT = 25.0
+MAX_TRADES_PER_DAY = 8      # Estratégia de reversão gera mais sinais
+
 STATE_FILE = 'bot_state_b.json'
-
-# Tempo de espera entre verificações (30 segundos)
-LOOP_INTERVAL_SECONDS = 30
+LOOP_INTERVAL_SECONDS = 15  # Checagem frequente para 5m

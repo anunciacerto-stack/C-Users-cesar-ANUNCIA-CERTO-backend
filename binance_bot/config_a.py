@@ -1,43 +1,59 @@
-# CONFIGURAÇÕES DO BOT A - SEGUIDOR DE TENDÊNCIA (TREND FOLLOWING)
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  BOT C — ETH/USDT — SCALPING COM VWAP + EMA RIBBON             ║
+# ║  Estratégia: Preço cruza acima do VWAP + EMA ribbon alinhada   ║
+# ║  + volume confirmado = entrada de alta probabilidade            ║
+# ╚══════════════════════════════════════════════════════════════════╝
 
-# Ativo de negociação e tempo gráfico
-SYMBOL = 'BTC/USDT'
-TIMEFRAME = '15m'
+# ETH tem excelente volatilidade intraday e taxas menores que BTC
+SYMBOL = 'ETH/USDT'
+TIMEFRAME = '5m'
+TIMEFRAME_MACRO = '1h'
 
-# Valor simulado a ser investido por operação: ~$1.700 (ou $300 USD)
-# Ajustado para o mínimo real da Binance Spot
 TRADE_AMOUNT_USDT = 12.0
 
-# ----------------- MOTOR DE DEFESA E RISCO MÍNIMO -----------------
-# Stop Loss Inicial: 1.5% (Perda máxima por trade: ~$4.50)
+# ─── STOPS DINÂMICOS POR ATR ──────────────────────────────────────────
+USE_ATR_STOPS = True
+ATR_PERIOD = 14
+ATR_STOP_MULTIPLIER = 1.3
+ATR_TP1_MULTIPLIER = 1.8
+ATR_TP2_MULTIPLIER = 3.5
+
 STOP_LOSS_PCT = 0.015
+TAKE_PROFIT_1_PCT = 0.020
+TAKE_PROFIT_2_PCT = 0.045
 
-# Alvo Parcial (Take Profit 1 - TP1): 1.0% (Lucro parcial: ~$1.80)
-TAKE_PROFIT_1_PCT = 0.010
-
-# Fração a fechar no TP1: 60% da posição
-PARTIAL_EXIT_PCT = 0.60
-
-# Ativar Breakeven (Risco Zero após TP1)?
+# ─── GESTÃO DE POSIÇÃO ────────────────────────────────────────────────
+PARTIAL_EXIT_PCT = 0.55
 ACTIVATE_BREAKEVEN = True
+TRAILING_STOP = True
+TRAILING_STOP_PCT = 0.012
 
-# Alvo Final (Take Profit 2 - TP2): 3.0%
-TAKE_PROFIT_2_PCT = 0.030
+# ─── FILTROS ─────────────────────────────────────────────────────────
+VOLUME_FILTER = True
+VOLUME_MA_PERIOD = 20
+VOLUME_MIN_RATIO = 1.4
 
-# Trava diária de prejuízo máximo
-MAX_DAILY_LOSS_USDT = 50.0
+TIME_FILTER = True
+TRADING_HOURS_UTC_START = 8
+TRADING_HOURS_UTC_END = 22
 
-# Meta diária de lucro máximo
-MAX_DAILY_PROFIT_USDT = 150.0
+# ─── VWAP + EMA RIBBON ────────────────────────────────────────────────
+# O VWAP é o indicador institucional mais confiável do dia
+# Quando o preço está acima do VWAP = bulls no controle
+VWAP_ENABLED = True
 
-# ----------------- INDICADORES TÉCNICOS (MÉDIAS + RSI) -----------------
-EMA_FAST_PERIOD = 9      # Média rápida
-EMA_SLOW_PERIOD = 21     # Média lenta
-RSI_PERIOD = 14          # Período do RSI
-RSI_OVERBOUGHT = 70      # Zona de sobrecompra
+# EMA Ribbon: 5 EMAs para confirmar alinhamento (todas crescentes = tendência forte)
+EMA_RIBBON = [8, 13, 21, 34, 55]
 
-# Nome do arquivo de estado
+# ─── RSI ──────────────────────────────────────────────────────────────
+RSI_PERIOD = 14
+RSI_OVERSOLD = 40           # Mais permissivo pois VWAP e ribbon confirmam
+RSI_OVERBOUGHT = 75
+
+# ─── PROTEÇÃO DIÁRIA ─────────────────────────────────────────────────
+MAX_DAILY_LOSS_USDT = 15.0
+MAX_DAILY_PROFIT_USDT = 25.0
+MAX_TRADES_PER_DAY = 8
+
 STATE_FILE = 'bot_state_a.json'
-
-# Tempo de espera entre verificações (30 segundos)
-LOOP_INTERVAL_SECONDS = 30
+LOOP_INTERVAL_SECONDS = 15
