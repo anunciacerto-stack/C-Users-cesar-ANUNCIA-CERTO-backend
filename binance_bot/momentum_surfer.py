@@ -157,7 +157,7 @@ def send_telegram(message):
 
 def build_exchange(api_key, api_secret):
     """Cria conexão com a Binance."""
-    use_testnet = os.getenv('USE_TESTNET', 'True').lower() == 'true'
+    use_testnet = os.getenv('USE_TESTNET', 'False').lower() == 'true'  # Padrão: CONTA REAL
     if not api_key or len(api_key.strip()) < 10:
         return None
     ex = ccxt.binance({
