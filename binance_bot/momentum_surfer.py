@@ -66,16 +66,22 @@ COMPOUND_WALLET_FILE = 'compound_wallet.json'
 
 # ─── ESCUDO DE CAPITAL ────────────────────────────────────────────
 # Protege o capital original investido. O robô NUNCA arrisca o capital base.
-CAPITAL_BASE_USDT     = 12.0   # Capital original que JAMAIS pode ser perdido
-MIN_TRADE_USDT        = 12.0   # Mínimo da Binance Spot
+#
+# SE QUISER DEPOSITAR MAIS:
+#   Depósito atual:     $12 USDT (R$ ~65)
+#   +R$200 (~$37 USDT): mude CAPITAL_BASE_USDT para 49.0
+#   +R$500 (~$92 USDT): mude CAPITAL_BASE_USDT para 104.0
+#   O bot ajusta TUDO automaticamente!
+#
+CAPITAL_BASE_USDT     = 12.0   # ← MUDE AQUI se depositar mais (total em USDT)
+MIN_TRADE_USDT        = 12.0   # Mínimo da Binance Spot (não mude)
 MAX_TRADE_USDT        = 200.0  # Teto de segurança por trade
-COMPOUND_REINVEST_RATE = 0.80  # Reinveste 80% do lucro acumulado (guarda 20%)
+COMPOUND_REINVEST_RATE = 0.80  # Reinveste 80% do lucro (guarda 20% seguro)
 
 # Margem de segurança: para de operar se o saldo cair abaixo de:
-# capital_base + esta margem (em USDT)
 CAPITAL_SHIELD_MARGIN = 2.0    # $2 de colchão de segurança extra
 # Saldo mínimo absoluto para continuar operando:
-CAPITAL_FLOOR = CAPITAL_BASE_USDT + CAPITAL_SHIELD_MARGIN  # = $14
+CAPITAL_FLOOR = CAPITAL_BASE_USDT + CAPITAL_SHIELD_MARGIN
 
 system_state = {
     'daily_loss': 0.0,
