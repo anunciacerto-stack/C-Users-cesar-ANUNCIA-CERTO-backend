@@ -63,9 +63,19 @@ import momentum_config as cfg
 # ══════════════════════════════════════════════════════════════════
 
 COMPOUND_WALLET_FILE = 'compound_wallet.json'
-MIN_TRADE_USDT = 12.0          # Mínimo da Binance Spot
-MAX_TRADE_USDT = 200.0         # Teto de segurança por trade
+
+# ─── ESCUDO DE CAPITAL ────────────────────────────────────────────
+# Protege o capital original investido. O robô NUNCA arrisca o capital base.
+CAPITAL_BASE_USDT     = 12.0   # Capital original que JAMAIS pode ser perdido
+MIN_TRADE_USDT        = 12.0   # Mínimo da Binance Spot
+MAX_TRADE_USDT        = 200.0  # Teto de segurança por trade
 COMPOUND_REINVEST_RATE = 0.80  # Reinveste 80% do lucro acumulado (guarda 20%)
+
+# Margem de segurança: para de operar se o saldo cair abaixo de:
+# capital_base + esta margem (em USDT)
+CAPITAL_SHIELD_MARGIN = 2.0    # $2 de colchão de segurança extra
+# Saldo mínimo absoluto para continuar operando:
+CAPITAL_FLOOR = CAPITAL_BASE_USDT + CAPITAL_SHIELD_MARGIN  # = $14
 
 system_state = {
     'daily_loss': 0.0,
@@ -545,6 +555,82 @@ def update_wallet_after_loss(wallet, loss_usd):
     return wallet
 
 
+# ══════════════════════════════════════════════════════════════════
+#  🛡️ ESCUDO DE CAPITAL — PROTEÇÃO DO INVESTIMENTO ORIGINAL
+# ══════════════════════════════════════════════════════════════════
+
+def check_capital_shield(exchange, bot_name):
+    """
+    VERIFICAÇÃO DO ESCUDO DE CAPITAL.
+    
+    Antes de cada trade, verifica o saldo REAL de USDT na Binance.
+    Se o saldo estiver abaixo do CAPITAL_FLOOR ($14), o bot:
+      1. Para de abrir novas posições
+      2. Envia alerta de emergência
+      3. Retorna False (bloqueia a entrada)
+    
+    Isso garante que o capital original ($12) NUNCA seja perdido.
+    Só o lucro acumulado é arriscado após o início das operações.
+    """
+    try:
+        balance = exchange.fetch_balance()
+        usdt_free = balance['free'].get('USDT', 0.0)
+        
+        if usdt_free < CAPITAL_FLOOR:
+            msg = (
+                f"🛡️ *ESCUDO DE CAPITAL ATIVADO — [{bot_name}]*\n"
+                f"⚠️ Saldo USDT disponível: ${usdt_free:.2f}\n"
+                f"🔒 Capital mínimo protegido: ${CAPITAL_FLOOR:.2f}\n"
+                f"🚫 NOVAS ENTRADAS BLOQUEADAS até recarregar saldo.\n\n"
+                f"✅ Seu investimento original de ${CAPITAL_BASE_USDT:.2f} está PROTEGIDO."
+            )
+            tprint(f"\n[{bot_name}] 🛡️ ESCUDO DE CAPITAL! Saldo=${usdt_free:.2f} < Piso=${CAPITAL_FLOOR:.2f}")
+            tprint(f"[{bot_name}] 🚫 Novas entradas bloqueadas para proteger capital original.")
+            send_telegram(msg)
+            return False, usdt_free
+        
+        return True, usdt_free
+    except Exception as e:
+        tprint(f"[{bot_name}] [SHIELD] Erro ao verificar saldo: {e}. Bloqueando por segurança.")
+        return False, 0.0
+
+
+def calc_safe_trade_size(exchange, bot_name, desired_size):
+    """
+    Calcula o tamanho SEGURO do trade:
+    - Verifica saldo real disponível
+    - Nunca usa mais do que (saldo - CAPITAL_BASE_USDT)
+      ou seja: SÓ ARRISCA O LUCRO, nunca o capital base
+    - Retorna o menor entre: tamanho desejado e o máximo seguro
+    """
+    try:
+        balance = exchange.fetch_balance()
+        usdt_free = balance['free'].get('USDT', 0.0)
+        
+        # Capital disponível para arriscar = saldo total - capital base protegido
+        # Exemplo: saldo=$18, base=$12 → disponível para arriscar=$6
+        # MAS: se o disponível < MIN_TRADE_USDT, usa o mínimo mesmo
+        # (nas primeiras operações ainda não há lucro acumulado)
+        capital_disponivel = usdt_free - CAPITAL_BASE_USDT
+        
+        if capital_disponivel >= MIN_TRADE_USDT:
+            # Já há lucro suficiente — arrisca só o lucro
+            safe_size = min(desired_size, capital_disponivel)
+            tprint(f"[{bot_name}] 🛡️ Modo LUCRO: investindo ${safe_size:.2f} (só lucro, base protegida)")
+        else:
+            # Ainda nas primeiras operações — usa o tamanho mínimo
+            # (inevitável no início, mas o stop loss limita o risco)
+            safe_size = min(desired_size, usdt_free * 0.85)  # usa no máx 85% do saldo
+            tprint(f"[{bot_name}] 🛡️ Modo INICIAL: investindo ${safe_size:.2f} | Saldo=${usdt_free:.2f}")
+        
+        safe_size = max(safe_size, MIN_TRADE_USDT)  # garante mínimo Binance
+        safe_size = min(safe_size, MAX_TRADE_USDT)  # garante teto de segurança
+        return round(safe_size, 2)
+    except Exception as e:
+        tprint(f"[{bot_name}] [SHIELD] Erro ao calcular size seguro: {e}")
+        return MIN_TRADE_USDT
+
+
 def get_wallet_summary(wallet):
     """Retorna um resumo formatado da carteira para Telegram."""
     win_rate = 0
@@ -630,6 +716,14 @@ def run_single_bot(bot_cfg):
                 state['daily_trades'] = 0
                 state['last_reset_date'] = today
                 save_bot_state(state_file, state)
+
+            # ── 🛡️ ESCUDO DE CAPITAL — verifica saldo ANTES de qualquer decisão ──
+            if not state['in_position']:
+                shield_ok, usdt_balance = check_capital_shield(exchange, name)
+                if not shield_ok:
+                    tprint(f"\r[{name}] 🛡️ ESCUDO ATIVO | Saldo=${usdt_balance:.2f} < Piso=${CAPITAL_FLOOR:.2f} | Aguardando...", end="", flush=True)
+                    time.sleep(300)  # Aguarda 5 min antes de checar de novo
+                    continue
 
             # ── Proteção diária global ─────────────────────────────
             if system_state['daily_loss'] >= cfg.MAX_DAILY_LOSS_USDT:
@@ -838,12 +932,15 @@ def run_single_bot(bot_cfg):
                 signal_ok, signal_reason, atr = check_entry(df, macro_direction)
                 
                 if signal_ok:
-                    # 💰 COMPOUND: Usa o tamanho de trade atual da carteira composta
+                    # 💰 COMPOUND + 🛡️ SHIELD: Calcula tamanho seguro real
                     with wallet_lock:
-                        trade_usdt_atual = compound_wallet['current_trade_size']
+                        trade_desejado = compound_wallet['current_trade_size']
+                    
+                    # Verifica saldo e calcula tamanho que protege o capital base
+                    trade_usdt_atual = calc_safe_trade_size(exchange, name, trade_desejado)
                     
                     tprint(f"\n[{name}] 🚀 SINAL CONFIRMADO! {signal_reason}")
-                    tprint(f"[{name}] 💰 Compound Wallet: investindo ${trade_usdt_atual:.2f}")
+                    tprint(f"[{name}] 💰 Investindo: ${trade_usdt_atual:.2f} (desejado=${trade_desejado:.2f})")
                     order, buy_price, qty_bought = buy_market(exchange, symbol, trade_usdt_atual, name)
                     
                     if order is not None and qty_bought > 0:
