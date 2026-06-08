@@ -62,6 +62,11 @@ import momentum_config as cfg
 #  ESTADO GLOBAL DO SISTEMA
 # ══════════════════════════════════════════════════════════════════
 
+COMPOUND_WALLET_FILE = 'compound_wallet.json'
+MIN_TRADE_USDT = 12.0          # Mínimo da Binance Spot
+MAX_TRADE_USDT = 200.0         # Teto de segurança por trade
+COMPOUND_REINVEST_RATE = 0.80  # Reinveste 80% do lucro acumulado (guarda 20%)
+
 system_state = {
     'daily_loss': 0.0,
     'daily_profit': 0.0,
@@ -448,26 +453,148 @@ def save_bot_state(state_file, state):
 
 
 # ══════════════════════════════════════════════════════════════════
+#  💰 COMPOUND WALLET — JUROS COMPOSTOS AUTOMÁTICOS
+# ══════════════════════════════════════════════════════════════════
+# Lógica:
+#   - Começa com $12 (mínimo Binance)
+#   - Cada lucro vai para a carteira composta
+#   - Próximo trade usa: base + (lucro_acumulado x 80%)
+#   - Exemplo: lucro $3 → carteira=$15 → próximo trade=$15
+#              lucro $5 → carteira=$20 → próximo trade=$20
+#   - Em caso de stop loss, o tamanho volta um pouco (proteção)
+# ══════════════════════════════════════════════════════════════════
+
+def load_compound_wallet():
+    """Carrega a carteira composta do disco (persistência entre reinicios)."""
+    if os.path.exists(COMPOUND_WALLET_FILE):
+        try:
+            with open(COMPOUND_WALLET_FILE, 'r') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    # Estado inicial: $12 por bot
+    return {
+        'base_capital': MIN_TRADE_USDT,
+        'total_profit_accumulated': 0.0,
+        'total_loss_accumulated': 0.0,
+        'current_trade_size': MIN_TRADE_USDT,
+        'all_time_high_wallet': MIN_TRADE_USDT,
+        'total_trades': 0,
+        'winning_trades': 0,
+        'losing_trades': 0,
+        'created_at': str(datetime.datetime.now()),
+    }
+
+
+def save_compound_wallet(wallet):
+    """Salva o estado da carteira composta."""
+    try:
+        with open(COMPOUND_WALLET_FILE, 'w') as f:
+            json.dump(wallet, f, indent=2)
+    except Exception as e:
+        tprint(f"[WALLET] Erro ao salvar: {e}")
+
+
+def update_wallet_after_win(wallet, profit_usd):
+    """
+    Após um TRADE LUCRATIVO:
+    Adiciona 80% do lucro ao capital de trade (reinveste).
+    Guarda 20% como lucro realizado (segurança).
+    """
+    reinvested = profit_usd * COMPOUND_REINVEST_RATE
+    wallet['total_profit_accumulated'] += profit_usd
+    wallet['current_trade_size'] = min(
+        wallet['current_trade_size'] + reinvested,
+        MAX_TRADE_USDT
+    )
+    # Atualiza máximo histórico da carteira
+    if wallet['current_trade_size'] > wallet['all_time_high_wallet']:
+        wallet['all_time_high_wallet'] = wallet['current_trade_size']
+    wallet['total_trades'] += 1
+    wallet['winning_trades'] += 1
+    save_compound_wallet(wallet)
+    tprint(
+        f"\n[WALLET] 📈 WIN! +${profit_usd:.3f} → "
+        f"Reinvestido: +${reinvested:.3f} | "
+        f"Próximo trade: ${wallet['current_trade_size']:.2f}"
+    )
+    return wallet
+
+
+def update_wallet_after_loss(wallet, loss_usd):
+    """
+    Após um STOP LOSS:
+    Reduz o tamanho do próximo trade proporcionalmente.
+    Garante que nunca desce abaixo do mínimo da Binance ($12).
+    """
+    # Reduz 50% do loss do tamanho do trade (não 100%, para não travar)
+    reducao = loss_usd * 0.50
+    wallet['total_loss_accumulated'] += loss_usd
+    wallet['current_trade_size'] = max(
+        wallet['current_trade_size'] - reducao,
+        MIN_TRADE_USDT
+    )
+    wallet['total_trades'] += 1
+    wallet['losing_trades'] += 1
+    save_compound_wallet(wallet)
+    tprint(
+        f"\n[WALLET] 📉 LOSS! -${loss_usd:.3f} → "
+        f"Redução: -${reducao:.3f} | "
+        f"Próximo trade: ${wallet['current_trade_size']:.2f}"
+    )
+    return wallet
+
+
+def get_wallet_summary(wallet):
+    """Retorna um resumo formatado da carteira para Telegram."""
+    win_rate = 0
+    if wallet['total_trades'] > 0:
+        win_rate = wallet['winning_trades'] / wallet['total_trades'] * 100
+    net_profit = wallet['total_profit_accumulated'] - wallet['total_loss_accumulated']
+    return (
+        f"💰 *COMPOUND WALLET — STATUS*\n"
+        f"───────────────────────────\n"
+        f"💵 Capital inicial: ${wallet['base_capital']:.2f}\n"
+        f"🚀 Trade atual: ${wallet['current_trade_size']:.2f}\n"
+        f"📈 Lucro acumulado: +${wallet['total_profit_accumulated']:.3f}\n"
+        f"📉 Perda acumulada: -${wallet['total_loss_accumulated']:.3f}\n"
+        f"💎 Lucro líquido: ${net_profit:+.3f}\n"
+        f"🏆 Máximo atingido: ${wallet['all_time_high_wallet']:.2f}\n"
+        f"📊 Trades: {wallet['total_trades']} "
+        f"(✅{wallet['winning_trades']} ❌{wallet['losing_trades']}) "
+        f"Win: {win_rate:.0f}%"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════
 #  THREAD DE CADA BOT
 # ══════════════════════════════════════════════════════════════════
+
+# Carteira composta compartilhada entre todos os bots
+compound_wallet = load_compound_wallet()
+wallet_lock = threading.Lock()
+
 
 def run_single_bot(bot_cfg):
     """
     Thread independente para cada ativo.
     Cada bot roda de forma paralela sem interferir nos outros.
+    Usa o Compound Wallet para crescer o tamanho do trade com os lucros.
     """
+    global compound_wallet
     name = bot_cfg['name']
     symbol = bot_cfg['symbol']
     tf = bot_cfg['timeframe']
     tf_macro = bot_cfg['timeframe_macro']
     state_file = bot_cfg['state_file']
-    trade_usdt = bot_cfg['trade_usdt']
     
     state = load_bot_state(state_file)
     last_macro_check = 0
     macro_direction = 0
     
     tprint(f"[{name}] 🚀 Iniciado para {symbol} | TF: {tf} | Macro: {tf_macro}")
+    with wallet_lock:
+        tprint(f"[{name}] 💰 Trade size atual (compound): ${compound_wallet['current_trade_size']:.2f}")
 
     while True:
         try:
@@ -563,11 +690,16 @@ def run_single_bot(bot_cfg):
                     state['in_position'] = False
                     state['is_partial_executed'] = False
                     save_bot_state(state_file, state)
+                    # 📉 COMPOUND: Reduz tamanho do próximo trade após loss
+                    with wallet_lock:
+                        compound_wallet = update_wallet_after_loss(compound_wallet, loss)
+                        next_size = compound_wallet['current_trade_size']
                     send_telegram(
                         f"❌ *[{name}] Stop Loss — {symbol}*\n"
                         f"📉 Saída: ${current_price:.4f}\n"
                         f"💸 Perda: -${loss:.3f} ({pct:+.2f}%)\n"
-                        f"📊 P/L dia: +${system_state['daily_profit']:.2f} / -${system_state['daily_loss']:.2f}"
+                        f"📊 P/L dia: +${system_state['daily_profit']:.2f} / -${system_state['daily_loss']:.2f}\n"
+                        f"💰 Próximo trade: ${next_size:.2f}"
                     )
                     time.sleep(cfg.LOOP_INTERVAL_SECONDS)
                     continue
@@ -589,7 +721,15 @@ def run_single_bot(bot_cfg):
                         state['in_position'] = False
                         state['is_partial_executed'] = False
                         save_bot_state(state_file, state)
-                        send_telegram(f"📈 *[{name}] Trailing Stop — Lucro garantido!*\n💵 +${profit:.3f} ({pct:+.2f}%)")
+                        # 📈 COMPOUND: Cresce tamanho do próximo trade
+                        with wallet_lock:
+                            compound_wallet = update_wallet_after_win(compound_wallet, profit)
+                            next_size = compound_wallet['current_trade_size']
+                        send_telegram(
+                            f"📈 *[{name}] Trailing Stop — Lucro garantido!*\n"
+                            f"💵 +${profit:.3f} ({pct:+.2f}%)\n"
+                            f"💰 Próximo trade cresce para: ${next_size:.2f}"
+                        )
                         time.sleep(cfg.LOOP_INTERVAL_SECONDS)
                         continue
 
@@ -624,11 +764,16 @@ def run_single_bot(bot_cfg):
                         state['quantity'] = remaining
                         state['is_partial_executed'] = True
                     save_bot_state(state_file, state)
+                    # 📈 COMPOUND: Parcial conta como lucro → cresce o próximo trade
+                    with wallet_lock:
+                        compound_wallet = update_wallet_after_win(compound_wallet, partial_profit)
+                        next_size = compound_wallet['current_trade_size']
                     send_telegram(
                         f"🎯 *[{name}] TP1 Atingido!*\n"
                         f"💰 +${partial_profit:.3f} ({pct:+.2f}%)\n"
                         f"🛡️ Breakeven: SL→entrada (risco=ZERO)\n"
-                        f"🚀 Trailing ativo para TP2"
+                        f"🚀 Trailing ativo para TP2\n"
+                        f"💰 Capital composto → próx. trade: ${next_size:.2f}"
                     )
                     time.sleep(cfg.LOOP_INTERVAL_SECONDS)
                     continue
@@ -644,10 +789,16 @@ def run_single_bot(bot_cfg):
                     state['in_position'] = False
                     state['is_partial_executed'] = False
                     save_bot_state(state_file, state)
+                    # 📈 COMPOUND: TP2 é o maior lucro → maior crescimento do capital
+                    with wallet_lock:
+                        compound_wallet = update_wallet_after_win(compound_wallet, profit)
+                        next_size = compound_wallet['current_trade_size']
+                        summary = get_wallet_summary(compound_wallet)
                     send_telegram(
                         f"🏆 *[{name}] ALVO FINAL (TP2)!*\n"
                         f"💵 +${profit:.3f} ({pct:+.2f}%)\n"
-                        f"📊 P/L dia total: +${system_state['daily_profit']:.2f}"
+                        f"📊 P/L dia total: +${system_state['daily_profit']:.2f}\n\n"
+                        + summary
                     )
                     time.sleep(cfg.LOOP_INTERVAL_SECONDS)
                     continue
@@ -687,8 +838,13 @@ def run_single_bot(bot_cfg):
                 signal_ok, signal_reason, atr = check_entry(df, macro_direction)
                 
                 if signal_ok:
+                    # 💰 COMPOUND: Usa o tamanho de trade atual da carteira composta
+                    with wallet_lock:
+                        trade_usdt_atual = compound_wallet['current_trade_size']
+                    
                     tprint(f"\n[{name}] 🚀 SINAL CONFIRMADO! {signal_reason}")
-                    order, buy_price, qty_bought = buy_market(exchange, symbol, trade_usdt, name)
+                    tprint(f"[{name}] 💰 Compound Wallet: investindo ${trade_usdt_atual:.2f}")
+                    order, buy_price, qty_bought = buy_market(exchange, symbol, trade_usdt_atual, name)
                     
                     if order is not None and qty_bought > 0:
                         # Stops e alvos pelo ATR dinâmico
@@ -718,6 +874,7 @@ def run_single_bot(bot_cfg):
                             f"🚀 *[{name}] Nova Posição!*\n"
                             f"🪙 {symbol} @ ${buy_price:.4f}\n"
                             f"📊 {signal_reason}\n\n"
+                            f"💰 Investido (compound): ${trade_usdt_atual:.2f}\n"
                             f"🛑 Stop: ${sl:.4f}\n"
                             f"🎯 TP1: ${tp1:.4f}\n"
                             f"🏆 TP2: ${tp2:.4f}\n"
