@@ -73,7 +73,7 @@ COMPOUND_WALLET_FILE = 'compound_wallet.json'
 #   +R$500 (~$92 USDT): mude CAPITAL_BASE_USDT para 104.0
 #   O bot ajusta TUDO automaticamente!
 #
-CAPITAL_BASE_USDT     = 12.0   # ← MUDE AQUI se depositar mais (total em USDT)
+CAPITAL_BASE_USDT     = 13.0   # ← Saldo real: $13.32 USDT (R$71,95)
 MIN_TRADE_USDT        = 12.0   # Mínimo da Binance Spot (não mude)
 MAX_TRADE_USDT        = 200.0  # Teto de segurança por trade
 COMPOUND_REINVEST_RATE = 0.80  # Reinveste 80% do lucro (guarda 20% seguro)
