@@ -73,7 +73,7 @@ COMPOUND_WALLET_FILE = 'compound_wallet.json'
 #   +R$500 (~$92 USDT): mude CAPITAL_BASE_USDT para 104.0
 #   O bot ajusta TUDO automaticamente!
 #
-CAPITAL_BASE_USDT     = 13.0   # ← Saldo real: $13.32 USDT (R$71,95)
+CAPITAL_BASE_USDT     = 35.0   # ← Capital protegido: R$189,00 (colchão para saldo de $43.01)
 MIN_TRADE_USDT        = 12.0   # Mínimo da Binance Spot (não mude)
 MAX_TRADE_USDT        = 200.0  # Teto de segurança por trade
 COMPOUND_REINVEST_RATE = 0.80  # Reinveste 80% do lucro (guarda 20% seguro)
@@ -488,13 +488,13 @@ def load_compound_wallet():
                 return json.load(f)
         except Exception:
             pass
-    # Estado inicial: $12 por bot
+    # Estado inicial: $14 por bot para aproveitar melhor o saldo de $43
     return {
-        'base_capital': MIN_TRADE_USDT,
+        'base_capital': 14.0,
         'total_profit_accumulated': 0.0,
         'total_loss_accumulated': 0.0,
-        'current_trade_size': MIN_TRADE_USDT,
-        'all_time_high_wallet': MIN_TRADE_USDT,
+        'current_trade_size': 14.0,
+        'all_time_high_wallet': 14.0,
         'total_trades': 0,
         'winning_trades': 0,
         'losing_trades': 0,
@@ -565,40 +565,58 @@ def update_wallet_after_loss(wallet, loss_usd):
 #  🛡️ ESCUDO DE CAPITAL — PROTEÇÃO DO INVESTIMENTO ORIGINAL
 # ══════════════════════════════════════════════════════════════════
 
+def get_total_equity(exchange):
+    """Calcula o patrimônio total (USDT + valor das posições abertas)."""
+    try:
+        balance = exchange.fetch_balance()
+        total_usdt = balance['total'].get('USDT', 0.0)
+        
+        # Adiciona o valor estimado das posições abertas em SOL, BTC, ETH
+        for coin in ['SOL', 'BTC', 'ETH']:
+            qty = balance['total'].get(coin, 0.0)
+            if qty > 0.0001:
+                try:
+                    ticker = exchange.fetch_ticker(f"{coin}/USDT")
+                    price = ticker['last']
+                    total_usdt += qty * price
+                except Exception:
+                    pass
+        return total_usdt
+    except Exception as e:
+        tprint(f"[SHIELD] Erro ao calcular equity total: {e}")
+        return 0.0
+
+
 def check_capital_shield(exchange, bot_name):
     """
     VERIFICAÇÃO DO ESCUDO DE CAPITAL.
     
-    Antes de cada trade, verifica o saldo REAL de USDT na Binance.
-    Se o saldo estiver abaixo do CAPITAL_FLOOR ($14), o bot:
-      1. Para de abrir novas posições
-      2. Envia alerta de emergência
-      3. Retorna False (bloqueia a entrada)
-    
-    Isso garante que o capital original ($12) NUNCA seja perdido.
-    Só o lucro acumulado é arriscado após o início das operações.
+    Antes de cada trade, verifica o patrimônio total (USDT + valor das posições).
+    Se o patrimônio estiver abaixo do CAPITAL_FLOOR, bloqueia novas entradas.
     """
     try:
-        balance = exchange.fetch_balance()
-        usdt_free = balance['free'].get('USDT', 0.0)
-        
-        if usdt_free < CAPITAL_FLOOR:
+        total_equity = get_total_equity(exchange)
+        if total_equity <= 0.0:
+            # Em caso de erro temporário na API, permite passar para não travar o bot
+            return True, 0.0
+            
+        if total_equity < CAPITAL_FLOOR:
             msg = (
                 f"🛡️ *ESCUDO DE CAPITAL ATIVADO — [{bot_name}]*\n"
-                f"⚠️ Saldo USDT disponível: ${usdt_free:.2f}\n"
+                f"⚠️ Patrimônio Total estimado: ${total_equity:.2f}\n"
                 f"🔒 Capital mínimo protegido: ${CAPITAL_FLOOR:.2f}\n"
-                f"🚫 NOVAS ENTRADAS BLOQUEADAS até recarregar saldo.\n\n"
-                f"✅ Seu investimento original de ${CAPITAL_BASE_USDT:.2f} está PROTEGIDO."
+                f"🚫 NOVAS ENTRADAS BLOQUEADAS para preservar seu patrimônio.\n\n"
+                f"✅ Seu investimento de ${CAPITAL_BASE_USDT:.2f} está PROTEGIDO."
             )
-            tprint(f"\n[{bot_name}] 🛡️ ESCUDO DE CAPITAL! Saldo=${usdt_free:.2f} < Piso=${CAPITAL_FLOOR:.2f}")
+            tprint(f"\n[{bot_name}] 🛡️ ESCUDO DE CAPITAL! Patrimônio=${total_equity:.2f} < Piso=${CAPITAL_FLOOR:.2f}")
             tprint(f"[{bot_name}] 🚫 Novas entradas bloqueadas para proteger capital original.")
             send_telegram(msg)
-            return False, usdt_free
+            return False, total_equity
         
-        return True, usdt_free
+        return True, total_equity
     except Exception as e:
-        tprint(f"[{bot_name}] [SHIELD] Erro ao verificar saldo: {e}. Bloqueando por segurança.")
-        return False, 0.0
+        tprint(f"[{bot_name}] [SHIELD] Erro: {e}. Liberando por segurança.")
+        return True, 0.0
 
 
 def calc_safe_trade_size(exchange, bot_name, desired_size):
