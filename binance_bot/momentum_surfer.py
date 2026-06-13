@@ -269,10 +269,17 @@ def calc_rsi(close, period=14):
 
 def calc_all_indicators(df):
     """Calcula todos os indicadores num DataFrame."""
-    df = calc_supertrend(df, cfg.SUPERTREND_ATR_PERIOD, cfg.SUPERTREND_MULTIPLIER)
+    # Bollinger Bands
+    sma = df['close'].rolling(20).mean()
+    std = df['close'].rolling(20).std()
+    df['bb_middle'] = sma
+    df['bb_upper'] = sma + (2.0 * std)
+    df['bb_lower'] = sma - (2.0 * std)
+    
     df['rsi'] = calc_rsi(df['close'], cfg.RSI_PERIOD)
     df['atr'] = calc_atr(df, cfg.ATR_PERIOD)
     df['vol_ma'] = df['volume'].rolling(20).mean()
+    df = calc_supertrend(df, cfg.SUPERTREND_ATR_PERIOD, cfg.SUPERTREND_MULTIPLIER)
     return df
 
 
@@ -296,101 +303,36 @@ def get_macro_direction(exchange, symbol, macro_tf):
 
 def check_entry(df, macro_direction):
     """
-    SINAL DE ENTRADA — SuperTrend Pullback Strategy
+    SINAL DE ENTRADA — Bollinger Bands + RSI Mean Reversion Strategy
     
-    CONDIÇÕES (TODAS devem ser verdadeiras):
-    
-    1. SuperTrend BULLISH no timeframe principal (direção = +1)
-    2. SuperTrend bullish há pelo menos 3 candles (evita entrar logo após virada)
-    3. RSI em zona de pullback (entre 35 e 55) — preço recuou, não está no topo
-    4. Candle de sinal FECHOU ACIMA do SuperTrend (confirmação de suporte)
-    5. Volume acima da média (sinal com força, não um movimento falso)
-    6. Macro trend (1h) também bullish OU neutro (não entra contra-tendência maior)
-    7. Risco/Retorno calculado >= 1.8:1 (só entra se o trade VALE A PENA)
-    
-    Retorna: (sinal_ok: bool, motivo: str, atr: float)
+    CONDIÇÕES:
+    1. Preço de fechamento anterior abaixo da Banda de Bollinger Inferior
+    2. RSI abaixo de 30 (oversold)
     """
     if len(df) < 50:
         return False, "Dados insuficientes", 0.0
     
-    # Candles fechados (evita whipsaw do candle ainda aberto)
-    c_prev = df.iloc[-3]   # 2 candles atrás
-    c_last = df.iloc[-2]   # ÚLTIMO candle FECHADO ← mais importante
+    c_last = df.iloc[-2]   # Último candle fechado
     
-    # ─── 1. SUPERTREND BULLISH ────────────────────────────────────
-    if c_last.get('st_direction', -1) != 1:
-        return False, f"SuperTrend BEARISH (vermelho)", 0.0
-    
-    # ─── 2. SUPERTREND BULLISH HÁ PELO MENOS N CANDLES ───────────
-    # Conta quantos candles consecutivos estão em uptrend
-    candles_in_trend = 0
-    for i in range(len(df)-2, max(len(df)-20, 0), -1):
-        if df.iloc[i].get('st_direction', -1) == 1:
-            candles_in_trend += 1
-        else:
-            break
-    
-    if candles_in_trend < cfg.MIN_CANDLES_IN_TREND:
-        return False, f"SuperTrend recém virou ({candles_in_trend} candles — mín={cfg.MIN_CANDLES_IN_TREND})", 0.0
-    
-    # ─── 3. RSI EM ZONA DE PULLBACK ───────────────────────────────
+    bb_lower = c_last.get('bb_lower', 0.0)
     rsi = c_last.get('rsi', 50)
-    if not (cfg.RSI_OVERSOLD < rsi < cfg.RSI_PULLBACK_LOW):
-        return False, f"RSI fora da zona de pullback: {rsi:.1f} (deve estar entre {cfg.RSI_OVERSOLD} e {cfg.RSI_PULLBACK_LOW})", 0.0
     
-    # ─── 4. CANDLE FECHOU ACIMA DO SUPERTREND ─────────────────────
-    st_level = c_last.get('supertrend', 0)
-    if c_last['close'] <= st_level:
-        return False, f"Close ({c_last['close']:.4f}) não está acima do SuperTrend ({st_level:.4f})", 0.0
+    cond_bb = c_last['close'] < bb_lower
+    cond_rsi = rsi < 30
     
-    # ─── 5. VOLUME CONFIRMADO ─────────────────────────────────────
-    if cfg.VOLUME_FILTER:
-        vol_ma = c_last.get('vol_ma', 0)
-        if vol_ma > 0 and c_last['volume'] < vol_ma * cfg.VOLUME_MULT:
-            return False, f"Volume fraco: {c_last['volume']:.0f} < {vol_ma * cfg.VOLUME_MULT:.0f}", 0.0
-    
-    # ─── 6. MACRO DIRECTION ───────────────────────────────────────
-    if macro_direction == -1:
-        return False, "Tendência macro (1h) BEARISH — não entrar contra", 0.0
-    
-    # ─── 7. VERIFICAÇÃO DE RISCO/RETORNO ─────────────────────────
-    atr = c_last.get('atr', 0)
-    if atr <= 0:
-        return False, "ATR inválido", 0.0
-    
-    entry_price = c_last['close']
-    stop_distance = cfg.ATR_STOP_MULT * atr
-    tp2_distance = cfg.ATR_TP2_MULT * atr
-    rr_ratio = tp2_distance / stop_distance
-    
-    if rr_ratio < cfg.MIN_RR_RATIO:
-        return False, f"R/R insuficiente: {rr_ratio:.2f} (mín={cfg.MIN_RR_RATIO})", 0.0
-    
-    reason = (
-        f"ST✅ ({candles_in_trend}c) | RSI={rsi:.0f}✅ | VOL✅ | "
-        f"R/R={rr_ratio:.1f}x | ATR=${atr:.4f}"
-    )
-    return True, reason, atr
+    if cond_bb and cond_rsi:
+        atr = c_last.get('atr', 0.0)
+        reason = f"BB Low✅ | RSI={rsi:.1f}✅ | ATR=${atr:.4f}"
+        return True, reason, atr
+        
+    return False, "Sem sinal (BB ou RSI fora da zona)", 0.0
 
 
 def check_exit_technical(df, state):
     """
     Verifica se é hora de sair pela análise técnica.
-    (além dos stops de preço já verificados antes)
+    Desativado na estratégia Bollinger + RSI para permitir reversão média.
     """
-    if len(df) < 10:
-        return False, ""
-    c_last = df.iloc[-2]  # Último candle fechado
-    
-    # Saída 1: SuperTrend virou bearish (tendência inverteu)
-    if c_last.get('st_direction', 1) == -1:
-        return True, "SuperTrend virou BEARISH"
-    
-    # Saída 2: RSI sobrecomprado extremo (> 75) após TP1 executado
-    rsi = c_last.get('rsi', 50)
-    if rsi > cfg.RSI_OVERBOUGHT and state.get('is_partial_executed', False):
-        return True, f"RSI sobrecomprado: {rsi:.0f}"
-    
     return False, ""
 
 
@@ -730,6 +672,13 @@ def run_single_bot(bot_cfg):
                 time.sleep(15)
                 continue
 
+            # ── Filtro de Plano (1 Robô vs 3 Robôs) ──────────────────
+            allowed_sym = system_state.get('allowed_symbol', 'ALL')
+            if allowed_sym != 'ALL' and allowed_sym != symbol:
+                # O usuário contratou 1 robô e selecionou outro símbolo, esta thread fica em espera
+                time.sleep(30)
+                continue
+
             if exchange is None:
                 time.sleep(10)
                 continue
@@ -782,8 +731,7 @@ def run_single_bot(bot_cfg):
             current_price = df.iloc[-1]['close']  # Preço atual (candle aberto)
 
             tprint(
-                f"\r[{name}] ${current_price:.4f} | ST:{'🟢' if df.iloc[-2].get('st_direction',0)==1 else '🔴'}"
-                f" RSI:{df.iloc[-2].get('rsi',0):.0f} | Pos:{state['in_position']}"
+                f"\r[{name}] ${current_price:.4f} | BB_Low:${df.iloc[-2].get('bb_lower',0.0):.2f} RSI:{df.iloc[-2].get('rsi',0):.0f} | Pos:{state['in_position']}"
                 f" | +${system_state['daily_profit']:.2f} -${system_state['daily_loss']:.2f}"
                 f" | {datetime.datetime.now().strftime('%H:%M:%S')}",
                 end="", flush=True
@@ -822,125 +770,31 @@ def run_single_bot(bot_cfg):
                     time.sleep(cfg.LOOP_INTERVAL_SECONDS)
                     continue
 
-                # ── B. TRAILING STOP (após TP1) ────────────────────
-                if cfg.TRAILING_AFTER_TP1 and state.get('is_partial_executed', False) and atr > 0:
-                    new_trail = current_price - cfg.TRAILING_ATR_MULT * atr
-                    if new_trail > state.get('trailing_stop', 0):
-                        state['trailing_stop'] = new_trail
-                        state['stop_loss'] = max(state['stop_loss'], new_trail)
-                        save_bot_state(state_file, state)
-                    if current_price <= state.get('trailing_stop', 0):
-                        profit = (current_price - entry) * qty
-                        tprint(f"\n[{name}] 📈 TRAILING STOP @ ${current_price:.4f} | +${profit:.3f}")
-                        sell_market(exchange, symbol, qty, name, "Trailing Stop")
-                        system_state['daily_profit'] += profit
-                        pct = (current_price - entry) / entry * 100
-                        register_trade(name, symbol, "VENDA (TRAILING)", current_price, qty, qty*current_price, pct)
-                        state['in_position'] = False
-                        state['is_partial_executed'] = False
-                        save_bot_state(state_file, state)
-                        # 📈 COMPOUND: Cresce tamanho do próximo trade
-                        with wallet_lock:
-                            compound_wallet = update_wallet_after_win(compound_wallet, profit)
-                            next_size = compound_wallet['current_trade_size']
-                        send_telegram(
-                            f"📈 *[{name}] Trailing Stop — Lucro garantido!*\n"
-                            f"💵 +${profit:.3f} ({pct:+.2f}%)\n"
-                            f"💰 Próximo trade cresce para: ${next_size:.2f}"
-                        )
-                        time.sleep(cfg.LOOP_INTERVAL_SECONDS)
-                        continue
-
-                # ── C. TAKE PROFIT 1 (parcial) ────────────────────
-                if not state['is_partial_executed'] and current_price >= state['tp1']:
-                    p_qty = qty * cfg.PARTIAL_EXIT_PCT
-                    tprint(f"\n[{name}] 🎯 TP1 @ ${current_price:.4f}")
-                    order = sell_market(exchange, symbol, p_qty, name, "TP1 Parcial")
-                    if order is None:
-                        time.sleep(cfg.LOOP_INTERVAL_SECONDS)
-                        continue
-                    time.sleep(1.5)
-                    balance = exchange.fetch_balance()
-                    base = symbol.split('/')[0]
-                    remaining = float(exchange.amount_to_precision(symbol, balance['free'].get(base, 0.0)))
-                    
-                    partial_profit = (current_price - entry) * p_qty
-                    system_state['daily_profit'] += partial_profit
-                    
-                    if cfg.ACTIVATE_BREAKEVEN:
-                        state['stop_loss'] = entry  # Risco ZERO
-                    state['trailing_stop'] = current_price - cfg.TRAILING_ATR_MULT * atr
-                    
-                    pct = (current_price - entry) / entry * 100
-                    register_trade(name, symbol, "VENDA PARCIAL (TP1)", current_price, p_qty, p_qty*current_price, pct)
-                    
-                    if remaining * current_price < 2.0:
-                        state['in_position'] = False
-                        state['is_partial_executed'] = False
-                        state['quantity'] = 0.0
-                    else:
-                        state['quantity'] = remaining
-                        state['is_partial_executed'] = True
-                    save_bot_state(state_file, state)
-                    # 📈 COMPOUND: Parcial conta como lucro → cresce o próximo trade
-                    with wallet_lock:
-                        compound_wallet = update_wallet_after_win(compound_wallet, partial_profit)
-                        next_size = compound_wallet['current_trade_size']
-                    send_telegram(
-                        f"🎯 *[{name}] TP1 Atingido!*\n"
-                        f"💰 +${partial_profit:.3f} ({pct:+.2f}%)\n"
-                        f"🛡️ Breakeven: SL→entrada (risco=ZERO)\n"
-                        f"🚀 Trailing ativo para TP2\n"
-                        f"💰 Capital composto → próx. trade: ${next_size:.2f}"
-                    )
-                    time.sleep(cfg.LOOP_INTERVAL_SECONDS)
-                    continue
-
-                # ── D. TAKE PROFIT 2 (alvo final) ─────────────────
-                if current_price >= state['tp2']:
+                # ── B. TAKE PROFIT (Bollinger Middle Band) ──────────
+                bb_middle = df.iloc[-2].get('bb_middle', 0.0)
+                if bb_middle > 0.0 and current_price >= bb_middle:
                     profit = (current_price - entry) * qty
-                    tprint(f"\n[{name}] 🏆 TP2 @ ${current_price:.4f} | +${profit:.3f}")
-                    sell_market(exchange, symbol, qty, name, "TP2 Alvo Final")
+                    tprint(f"\n[{name}] 🏆 TAKE PROFIT (Média BB) @ ${current_price:.4f} | +${profit:.3f}")
+                    sell_market(exchange, symbol, qty, name, "TP Bollinger Middle")
                     system_state['daily_profit'] += profit
                     pct = (current_price - entry) / entry * 100
-                    register_trade(name, symbol, "VENDA (TP2)", current_price, qty, qty*current_price, pct)
+                    register_trade(name, symbol, "VENDA (TP)", current_price, qty, qty*current_price, pct)
                     state['in_position'] = False
                     state['is_partial_executed'] = False
                     save_bot_state(state_file, state)
-                    # 📈 COMPOUND: TP2 é o maior lucro → maior crescimento do capital
+                    # 📈 COMPOUND: Cresce tamanho do próximo trade
                     with wallet_lock:
                         compound_wallet = update_wallet_after_win(compound_wallet, profit)
                         next_size = compound_wallet['current_trade_size']
                         summary = get_wallet_summary(compound_wallet)
                     send_telegram(
-                        f"🏆 *[{name}] ALVO FINAL (TP2)!*\n"
+                        f"🏆 *[{name}] Take Profit (Média BB) — {symbol}*\n"
                         f"💵 +${profit:.3f} ({pct:+.2f}%)\n"
                         f"📊 P/L dia total: +${system_state['daily_profit']:.2f}\n\n"
                         + summary
                     )
                     time.sleep(cfg.LOOP_INTERVAL_SECONDS)
                     continue
-
-                # ── E. SAÍDA TÉCNICA (SuperTrend virou) ───────────
-                should_exit, exit_reason = check_exit_technical(df, state)
-                if should_exit:
-                    profit = (current_price - entry) * qty
-                    tprint(f"\n[{name}] ⚠️ SAÍDA TÉCNICA: {exit_reason}")
-                    sell_market(exchange, symbol, qty, name, f"Técnica: {exit_reason}")
-                    if profit > 0:
-                        system_state['daily_profit'] += profit
-                    else:
-                        system_state['daily_loss'] += abs(profit)
-                    pct = (current_price - entry) / entry * 100
-                    register_trade(name, symbol, "VENDA (TÉCNICA)", current_price, qty, qty*current_price, pct)
-                    state['in_position'] = False
-                    state['is_partial_executed'] = False
-                    save_bot_state(state_file, state)
-                    send_telegram(
-                        f"⚠️ *[{name}] Saída Técnica*\n"
-                        f"📊 Motivo: {exit_reason}\n"
-                        f"💵 Resultado: {'+$' if profit >= 0 else '-$'}{abs(profit):.3f} ({pct:+.2f}%)"
-                    )
 
             # ══════════════════════════════════════════════════════
             #  MODO FLAT — PROCURANDO SINAL
@@ -1040,10 +894,14 @@ def backend_sync_thread():
                 api_key = os.getenv('BINANCE_API_KEY', '')
                 api_secret = os.getenv('BINANCE_API_SECRET', '')
                 is_active = True
+                allowed_symbol = 'ALL'
             else:
                 api_key = bcfg.get('binanceApiKey', '')
                 api_secret = bcfg.get('binanceApiSecret', '')
                 is_active = bcfg.get('isActive', False)
+                allowed_symbol = bcfg.get('symbol', 'ALL')
+            
+            system_state['allowed_symbol'] = allowed_symbol
             
             # Reconecta exchange se as chaves mudaram
             if api_key != system_state.get('api_key') or api_secret != system_state.get('api_secret'):
@@ -1080,7 +938,7 @@ def main():
     print("=" * 72)
     print("  💎 MOMENTUM SURFER PRO v4.0 — SISTEMA MULTI-ATIVO INICIANDO")
     print("=" * 72)
-    print(f"  Estratégia: SuperTrend Pullback + ATR Dinâmico")
+    print(f"  Estratégia: Bollinger Bands + RSI Mean Reversion")
     print(f"  Ativos: {' | '.join(b['symbol'] for b in cfg.BOTS)}")
     print(f"  Meta diária: +${cfg.MAX_DAILY_PROFIT_USDT} | Limite perda: -${cfg.MAX_DAILY_LOSS_USDT}")
     print(f"  Max {cfg.MAX_TRADES_PER_BOT_PER_DAY} trades/ativo/dia | Janela: {cfg.HOURS_START_UTC}h-{cfg.HOURS_END_UTC}h UTC")

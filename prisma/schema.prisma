@@ -8,14 +8,16 @@ datasource db {
 }
 
 model User {
-  id                  String            @id @default(uuid())
+  id                  String              @id @default(uuid())
   name                String
-  email               String            @unique
+  email               String              @unique
   password            String
   phone               String?
-  role                String            @default("user")
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  document            String?             @unique
+  accountType         String?
+  role                String              @default("user")
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
   classifieds         Classified[]
   muralPosts          MuralPost[]
   donations           Donation[]
@@ -27,6 +29,8 @@ model User {
   botConfig           BotConfig?
   botTrades           BotTrade[]
   payments            Payment[]
+  graduationEvents    GraduationEvent[]
+  graduationStudents  GraduationStudent[]
 }
 
 model Classified {
@@ -172,27 +176,27 @@ model PropertyListing {
 }
 
 model AnimalListing {
-  id         String   @id @default(uuid())
-  ownerId    String
-  title      String
+  id          String   @id @default(uuid())
+  ownerId     String
+  title       String
   description String
-  animalType String
-  breed      String?
-  sex        String?
-  age        String?
-  weight     Float?
-  price      Float?
-  state      String
-  city       String
-  tags       String[]
-  images     String[]
-  qrEnabled  Boolean  @default(false)
-  nfcEnabled Boolean  @default(false)
-  publicCode String   @unique
-  status     String   @default("active")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  animalType  String
+  breed       String?
+  sex         String?
+  age         String?
+  weight      Float?
+  price       Float?
+  state       String
+  city        String
+  tags        String[]
+  images      String[]
+  qrEnabled   Boolean  @default(false)
+  nfcEnabled  Boolean  @default(false)
+  publicCode  String   @unique
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
   @@index([animalType])
@@ -202,43 +206,43 @@ model AnimalListing {
 }
 
 model NfcTag {
-  id          String     @id @default(uuid())
-  tagId       String     @unique
-  targetId    String?    
-  targetType  String?    
-  status      String     @default("active")
-  ownerId     String?
-  owner       User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  scans       NfcScan[]
+  id         String    @id @default(uuid())
+  tagId      String    @unique
+  targetId   String?
+  targetType String?
+  status     String    @default("active")
+  ownerId    String?
+  owner      User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  scans      NfcScan[]
 
   @@index([ownerId])
   @@index([targetId])
 }
 
 model NfcScan {
-  id          String   @id @default(uuid())
-  tagId       String
-  tag         NfcTag   @relation(fields: [tagId], references: [tagId], onDelete: Cascade)
-  scannedAt   DateTime @default(now())
-  userAgent   String?
-  ipAddress   String?
+  id        String   @id @default(uuid())
+  tagId     String
+  tag       NfcTag   @relation(fields: [tagId], references: [tagId], onDelete: Cascade)
+  scannedAt DateTime @default(now())
+  userAgent String?
+  ipAddress String?
 
   @@index([tagId])
 }
 
 model BotConfig {
-  id             String   @id @default(uuid())
-  userId         String   @unique
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  binanceApiKey  String?
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  binanceApiKey    String?
   binanceApiSecret String?
-  symbol         String   @default("SOL/USDT")
-  tradeAmount    Float    @default(12.0)
-  isActive       Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  symbol           String   @default("SOL/USDT")
+  tradeAmount      Float    @default(12.0)
+  isActive         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@index([userId])
 }
@@ -248,11 +252,11 @@ model BotTrade {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   asset     String
-  type      String   // "COMPRA" ou "VENDA"
+  type      String // "COMPRA" ou "VENDA"
   price     Float
   amount    Float
   value     Float
-  profitPct String?  // Lucro em percentual (ex: "+2.00%")
+  profitPct String? // Lucro em percentual (ex: "+2.00%")
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -270,4 +274,68 @@ model Payment {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+}
+
+model GraduationEvent {
+  id             String              @id @default(uuid())
+  photographerId String
+  photographer   User                @relation(fields: [photographerId], references: [id], onDelete: Cascade)
+  name           String
+  date           DateTime
+  physicalGoal   Int                 @default(40)
+  posterGoal     Int                 @default(2)
+  digitalPrice   Float               @default(450.0)
+  status         String              @default("active")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  students       GraduationStudent[]
+  photos         GraduationPhoto[]
+
+  @@index([photographerId])
+}
+
+model GraduationStudent {
+  id        String              @id @default(uuid())
+  eventId   String
+  event     GraduationEvent     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name      String
+  course    String?
+  contract  GraduationContract?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@index([eventId])
+  @@index([userId])
+}
+
+model GraduationPhoto {
+  id              String          @id @default(uuid())
+  eventId         String
+  event           GraduationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  studentId       String?
+  originalPath    String // Ex: D:\AnunciaCerto_Storage\Formaturas\event-uuid\high-res\...
+  watermarkedPath String // Ex: D:\AnunciaCerto_Storage\Formaturas\event-uuid\watermarked\...
+  isForAlbum      Boolean         @default(false)
+  isForPoster     Boolean         @default(false)
+  isPurchased     Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+
+  @@index([eventId])
+  @@index([studentId])
+}
+
+model GraduationContract {
+  id                  String            @id @default(uuid())
+  studentId           String            @unique
+  student             GraduationStudent @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  albumSelectedCount  Int               @default(0)
+  posterSelectedCount Int               @default(0)
+  physicalValue       Float
+  digitalPurchased    Boolean           @default(false)
+  digitalValue        Float             @default(0)
+  status              String            @default("pending") // "pending", "signed", "paid"
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 }
