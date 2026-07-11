@@ -1,0 +1,33 @@
+
+// ==========================================
+// NOVO MODULO: REDE SAUDE CAR (Planos)
+// ==========================================
+
+model HealthPlan {
+  id          String   @id @default(uuid())
+  name        String   // Ex: Saude Car Basico, Saude Car Total
+  description String
+  priceMensal Float
+  priceAnual  Float
+  features    String[] 
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model VehicleHealthSubscription {
+  id          String   @id @default(uuid())
+  vehicleId   String   @unique
+  userId      String
+  planId      String
+  status      String   @default("active") // active, pending, canceled
+  paymentType String   // mensal, anual_12x
+  startDate   DateTime @default(now())
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([vehicleId])
+  @@index([planId])
+}

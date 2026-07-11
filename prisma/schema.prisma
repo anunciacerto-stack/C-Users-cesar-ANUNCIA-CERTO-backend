@@ -31,6 +31,15 @@ model User {
   payments            Payment[]
   graduationEvents    GraduationEvent[]
   graduationStudents  GraduationStudent[]
+
+  // --- Novas relações: Módulo Saúde Veicular ---
+  vehicleListings     VehicleListing[]
+  vehicleRecordsAdded VehicleHealthRecord[] @relation("RecordedBy")
+  vehicleConsults     VehicleConsultationAudit[] @relation("ConsultedBy")
+  partnerDealership   PartnerDealership?
+  businessProfiles    BusinessProfile[]
+  healthSubscriptions VehicleHealthSubscription[]
+  easyBridgeProfile EasyBridgeUser?
 }
 
 model Classified {
@@ -256,7 +265,7 @@ model BotTrade {
   price     Float
   amount    Float
   value     Float
-  profitPct String? // Lucro em percentual (ex: "+2.00%")
+  profitPct String? // Lucro em percentual
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -267,9 +276,9 @@ model Payment {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   amount    Float
-  mpId      String   @unique // ID do pagamento retornado pelo Mercado Pago
-  status    String   @default("pending") // "pending", "approved", "rejected"
-  type      String   @default("subscription") // "subscription" ou "deposit"
+  mpId      String   @unique
+  status    String   @default("pending")
+  type      String   @default("subscription")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -315,8 +324,8 @@ model GraduationPhoto {
   eventId         String
   event           GraduationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
   studentId       String?
-  originalPath    String // Ex: D:\AnunciaCerto_Storage\Formaturas\event-uuid\high-res\...
-  watermarkedPath String // Ex: D:\AnunciaCerto_Storage\Formaturas\event-uuid\watermarked\...
+  originalPath    String 
+  watermarkedPath String
   isForAlbum      Boolean         @default(false)
   isForPoster     Boolean         @default(false)
   isPurchased     Boolean         @default(false)
@@ -335,7 +344,248 @@ model GraduationContract {
   physicalValue       Float
   digitalPurchased    Boolean           @default(false)
   digitalValue        Float             @default(0)
-  status              String            @default("pending") // "pending", "signed", "paid"
+  status              String            @default("pending")
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
+}
+
+// ==========================================
+// NOVOS MODULOS CLIENTES (Supermercados, Sorveterias, Oficinas)
+// ==========================================
+
+model BusinessProfile {
+  id              String   @id @default(uuid())
+  ownerId         String
+  owner           User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  businessType    String   
+  name            String
+  description     String?
+  document        String?  @unique 
+
+  address         String?
+  city            String?
+  state           String?
+
+  phone           String?
+  whatsapp        String?
+
+  images          String[]
+  qrEnabled       Boolean  @default(false)
+  nfcEnabled      Boolean  @default(false)
+  publicCode      String   @unique
+
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([businessType])
+  @@index([publicCode])
+}
+
+model VehicleListing {
+  id      String @id @default(uuid())
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  vehicleType     String
+  brand           String
+  model           String
+  year            Int
+  plate           String? @unique
+  chassisOrSerial String? @unique
+  color           String?
+  renavam         String?
+
+  // Dados Adicionais do Proprietário (Aba 2)
+  ownerName       String?
+  ownerDocument   String?
+  ownerPhone      String?
+  ownerEmail      String?
+  ownerCityState  String?
+
+  publicCode String   @unique
+  images     String[]
+  videoUrl   String?
+  nfcEnabled Boolean  @default(false)
+  qrEnabled  Boolean  @default(false)
+  nfcProvisioningStatus String @default("pending")
+
+  isStolen      Boolean @default(false)
+  isAuction     Boolean @default(false)
+  isScrap       Boolean @default(false)
+  judicialBlock Boolean @default(false)
+
+  // Status de Ativação / Pagamento de R$ 1,00
+  isPaid        Boolean @default(false)
+
+  // Cliques / Ranking
+  clicksFisicos  Int @default(0)
+  clicksVirtuais Int @default(0)
+
+  hideOwnerName Boolean @default(false)
+  hidePlate     Boolean @default(false)
+
+  forSale Boolean @default(false)
+  price   Float?
+
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  healthRecords VehicleHealthRecord[]
+  consultations VehicleConsultationAudit[]
+  healthSubscription VehicleHealthSubscription?
+
+  @@index([ownerId])
+  @@index([vehicleType])
+  @@index([publicCode])
+  @@index([plate])
+}
+
+model VehicleHealthRecord {
+  id        String         @id @default(uuid())
+  vehicleId String
+  vehicle   VehicleListing @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  recordedById   String
+  recordedBy     User    @relation("RecordedBy", fields: [recordedById], references: [id])
+  isVerifiedShop Boolean @default(false)
+
+  serviceType String
+  description String
+  mileage     Int?
+  serviceDate DateTime
+  documents   String[]
+
+  // Detalhes da Revisão / Checklist (JET Lubrificantes Avançado)
+  oilType                   String?
+  oilChangeMotor            Boolean @default(false)
+  oilChangeCambioManual     Boolean @default(false)
+  oilChangeCambioAutomatico Boolean @default(false)
+  kmProximaTroca            Int?
+  filterAr                  Boolean @default(false)
+  filterOleoMotor           Boolean @default(false)
+  filterOleoCambio          Boolean @default(false)
+  warrantyServices          Boolean @default(false)
+  warrantyParts             Boolean @default(false)
+  partsReplaced             String?
+  videoUrl                  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([vehicleId])
+  @@index([recordedById])
+}
+
+model PartnerDealership {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyName String
+  cnpj        String @unique
+  address     String
+  city        String
+  state       String
+
+  subscriptionPlan String  @default("basic")
+  isActive         Boolean @default(true)
+  isHealthCarAccredited Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VehicleConsultationAudit {
+  id                String   @id @default(uuid())
+  vehicleId         String
+  vehicle           VehicleListing @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  
+  consultedById     String
+  consultedBy       User     @relation("ConsultedBy", fields: [consultedById], references: [id])
+  
+  legalTermAccepted Boolean  @default(true) 
+  termVersion       String   @default("v1.0")
+  feeCharged        Float    @default(0.0) 
+  ipAddress         String?
+  
+  consultedAt       DateTime @default(now())
+
+  @@index([vehicleId])
+  @@index([consultedById])
+}
+
+// ==========================================
+// NOVO MODULO: REDE SAUDE CAR (Planos)
+// ==========================================
+
+model HealthPlan {
+  id          String   @id @default(uuid())
+  name        String   
+  description String
+  priceMensal Float
+  priceAnual  Float
+  features    String[] 
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  subscriptions VehicleHealthSubscription[]
+}
+
+model VehicleHealthSubscription {
+  id          String   @id @default(uuid())
+  vehicleId   String   @unique
+  vehicle     VehicleListing @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId      String
+  plan        HealthPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  status      String   @default("active") 
+  paymentType String   
+  startDate   DateTime @default(now())
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([vehicleId])
+  @@index([planId])
+}
+
+// ==========================================
+// MÓDULO: BROCH EASYBRIDGE EN (Aprendizado de Inglês)
+// ==========================================
+
+model EasyBridgeUser {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xp             Int      @default(0)
+  level          Int      @default(1)
+  wordsLearned   Int      @default(0)
+  quizzesDone    Int      @default(0)
+  streakCurrent  Int      @default(0)
+  streakLongest  Int      @default(0)
+  streakLastDate DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  completedLessons EasyBridgeLesson[]
+
+  @@index([userId])
+}
+
+model EasyBridgeLesson {
+  id               Int              @id @default(autoincrement())
+  easyBridgeUserId String
+  easyBridgeUser   EasyBridgeUser   @relation(fields: [easyBridgeUserId], references: [id], onDelete: Cascade)
+  categoryId       String
+  wordPt           String
+  wordEn           String
+  completedAt      DateTime         @default(now())
+
+  @@index([easyBridgeUserId])
+  @@index([categoryId])
 }

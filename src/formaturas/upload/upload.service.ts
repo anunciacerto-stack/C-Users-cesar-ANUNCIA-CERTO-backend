@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 // Instale 'sharp' no backend caso ainda não tenha (npm install sharp)
-import * as sharp from 'sharp';
+import sharp from 'sharp';
 
 @Injectable()
 export class FormaturasUploadService {
@@ -47,7 +47,7 @@ export class FormaturasUploadService {
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     });
 
-    const results = [];
+    const results: any[] = [];
 
     // Processa uma por uma aplicando compressão e marca d'água
     for (const file of files) {

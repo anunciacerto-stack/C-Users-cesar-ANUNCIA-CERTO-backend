@@ -13,6 +13,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ProfilesModule } from './profiles/profiles.module';
 import { PropertiesModule } from './properties/properties.module';
 import { BotModule } from './bot/bot.module';
+import { VehiclesModule } from './vehicles/vehicles.module';
+import { EasybridgeModule } from './easybridge/easybridge.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { BotModule } from './bot/bot.module';
     PropertiesModule,
     AnimalsModule,
     BotModule,
+    VehiclesModule,
+    EasybridgeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

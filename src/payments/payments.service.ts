@@ -33,7 +33,7 @@ export class PaymentsService {
         },
         body: JSON.stringify({
           transaction_amount: amount,
-          description: type === 'subscription' ? 'Assinatura Robô Spot AI' : 'Depósito de Saldo Broker',
+          description: this.getPaymentDescription(type),
           payment_method_id: 'pix',
           payer: {
             email: email,
@@ -141,6 +141,19 @@ export class PaymentsService {
     };
   }
 
+  private getPaymentDescription(type: string): string {
+    switch (type) {
+      case 'plano_prata': return 'Assinatura Anuncia Certo - Plano Prata';
+      case 'plano_ouro': return 'Assinatura Anuncia Certo - Plano Ouro';
+      case 'rh_premium': return 'Assinatura RH/Empresas - Banco de Talentos';
+      case 'formaturas_fisico': return 'Pacote Formaturas - Álbum Físico (Split)';
+      case 'formaturas_digital': return 'Pacote Formaturas - Galeria Digital (Split)';
+      case 'subscription': return 'Assinatura Robô Spot AI'; // O Robô voltou!
+      case 'deposit': return 'Depósito de Saldo Broker'; // O Robô voltou!
+      default: return 'Pagamento Plataforma Anuncia Certo';
+    }
+  }
+
   async handleWebhook(body: any) {
     console.log('[WEBHOOK MERCADO PAGO]', JSON.stringify(body));
 
@@ -200,13 +213,21 @@ export class PaymentsService {
         data: { status: 'approved' },
       });
 
-      // 2. Concede acesso de assinante ao usuário
-      await tx.user.update({
-        where: { id: payment.userId },
-        data: { role: 'subscriber' },
-      });
+      // 2. Concede acesso ou privilégio baseado no tipo de pagamento
+      const roleToSet = this.getRoleForPaymentType(payment.type);
+      if (roleToSet) {
+        await tx.user.update({
+          where: { id: payment.userId },
+          data: { accountType: roleToSet },
+        });
+      }
 
-      // 3. Opcional: Se for do tipo 'subscription', garante que o botConfig existe ou cria ele
+      // 3. Processamento Específico: Split Formaturas
+      if (payment.type.startsWith('formaturas_')) {
+        await this.processFormaturaSplit(tx, payment);
+      }
+
+      // 4. Processamento Específico: Robô Spot AI (RESTAURADO COM SUCESSO!)
       if (payment.type === 'subscription') {
         const existingConfig = await tx.botConfig.findUnique({
           where: { userId: payment.userId },
@@ -223,5 +244,41 @@ export class PaymentsService {
         }
       }
     });
+  }
+
+  private getRoleForPaymentType(type: string): string | null {
+    switch (type) {
+      case 'plano_prata': return 'prata';
+      case 'plano_ouro': return 'ouro';
+      case 'rh_premium': return 'rh_premium';
+      default: return null;
+    }
+  }
+
+  private async processFormaturaSplit(tx: any, payment: any) {
+    // =========================================================
+    // VARIÁVEIS DE CONFIGURAÇÃO DO SPLIT (FORMATURAS)
+    // =========================================================
+    
+    // 1. Taxa da Plataforma (Altere para 0.20 se quiser 20%, ou 0.25 para 25%)
+    const TAXA_PLATAFORMA_PERCENTUAL = 0.25; 
+
+    // 2. Conta/Chave do Fotógrafo (Ainda não definida)
+    // No futuro, buscaremos isso no banco (ex: payment.photographerId)
+    // onde o fotógrafo cadastrará a conta bancária ou Mercado Pago dele.
+    const CHAVE_RECEBEDOR_FOTOGRAFO = "CHAVE_PENDENTE_FOTOGRAFO"; 
+
+    // =========================================================
+
+    const amount = payment.amount;
+    const platformFee = amount * TAXA_PLATAFORMA_PERCENTUAL;
+    const photographerShare = amount - platformFee;
+    
+    console.log(`[SPLIT FORMATURAS] Total: R$ ${amount} | Plataforma (${TAXA_PLATAFORMA_PERCENTUAL * 100}%): R$ ${platformFee} | Fotógrafo: R$ ${photographerShare} (Conta Destino: ${CHAVE_RECEBEDOR_FOTOGRAFO})`);
+    
+    // NOTA PARA O FUTURO (API MERCADO PAGO):
+    // Quando o fotógrafo definir o banco dele, a chamada de CreatePixPayment
+    // receberá o array de "splits" com a CHAVE_RECEBEDOR_FOTOGRAFO. O Mercado Pago
+    // fará a divisão na fonte antes mesmo do dinheiro cair na conta.
   }
 }

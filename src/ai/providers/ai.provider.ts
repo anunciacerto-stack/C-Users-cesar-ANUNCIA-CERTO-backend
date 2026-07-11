@@ -91,7 +91,36 @@ export class MockAiProvider implements AiProvider {
 
   async explain(input: AiExplainDto): Promise<AiExplainResult> {
     const topicKey = normalizeText(input.topic);
-    const content = AI_EXPLANATIONS[topicKey] ?? AI_EXPLANATIONS.default;
+    
+    // Find the best matching key from AI_EXPLANATIONS
+    let matchedKey = 'default';
+    for (const key of Object.keys(AI_EXPLANATIONS)) {
+      if (key !== 'default' && (topicKey.includes(key) || key.includes(topicKey))) {
+        matchedKey = key;
+        break;
+      }
+    }
+    
+    // If no direct key match, try matching heuristic keywords
+    if (matchedKey === 'default') {
+      if (topicKey.includes('veiculo') || topicKey.includes('carro') || topicKey.includes('moto') || topicKey.includes('placa') || topicKey.includes('venda')) {
+        matchedKey = 'nfc_por_categoria';
+      } else if (topicKey.includes('loja') || topicKey.includes('mercado') || topicKey.includes('gondola') || topicKey.includes('supermercado')) {
+        matchedKey = 'supermercados';
+      } else if (topicKey.includes('sorvete') || topicKey.includes('ponto') || topicKey.includes('fidelidade') || topicKey.includes('sorveteria')) {
+        matchedKey = 'sorveterias';
+      } else if (topicKey.includes('oficina') || topicKey.includes('conserto') || topicKey.includes('reparo') || topicKey.includes('mecanic')) {
+        matchedKey = 'oficinas';
+      } else if (topicKey.includes('foto') || topicKey.includes('imagem') || topicKey.includes('formatura') || topicKey.includes('album')) {
+        matchedKey = 'formaturas';
+      } else if (topicKey.includes('segur') || topicKey.includes('sinistro') || topicKey.includes('sherif') || topicKey.includes('robo')) {
+        matchedKey = 'sherif';
+      } else if (topicKey.includes('nfc') || topicKey.includes('tag') || topicKey.includes('adesivo')) {
+        matchedKey = 'nfc';
+      }
+    }
+
+    const content = AI_EXPLANATIONS[matchedKey] ?? AI_EXPLANATIONS.default;
 
     return {
       title: content.title,

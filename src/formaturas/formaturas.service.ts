@@ -2,7 +2,7 @@ import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import * as sharp from 'sharp'; // Sharp ativado para a marca d'água
+import sharp from 'sharp'; // Sharp ativado para a marca d'água
 import axios from 'axios';
 
 @Injectable()
