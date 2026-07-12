@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# Executa a criação das tabelas no banco de dados
+echo "Running prisma db push..."
+npx prisma db push
+
 # Inicia o robô Python em segundo plano e salva o PID
 echo "Starting Python bots..."
 cd /app/binance_bot
