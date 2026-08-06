@@ -15,6 +15,13 @@ import sys
 import os
 
 def main():
+    if sys.platform.startswith('win'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
+            sys.stderr.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
+        except Exception:
+            pass
+
     print("=" * 72)
     print("  💎 LAUNCHER — MOMENTUM SURFER PRO v4.0")
     print("=" * 72)

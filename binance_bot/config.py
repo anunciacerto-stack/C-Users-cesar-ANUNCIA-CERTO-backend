@@ -6,7 +6,7 @@
 
 # Ativo e timeframe principal de entrada
 SYMBOL = 'SOL/USDT'
-TIMEFRAME = '15m'          # Timeframe de análise de entrada
+TIMEFRAME = '1h'          # Timeframe de análise de entrada (alterado de 15m para evitar whipsaws)
 TIMEFRAME_MACRO = '1h'    # Timeframe macro para filtro de tendência
 
 # Valor por operação. Com $12, o objetivo é ~$0.30-0.50/trade líquido

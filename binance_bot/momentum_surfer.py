@@ -73,7 +73,7 @@ COMPOUND_WALLET_FILE = 'compound_wallet.json'
 #   +R$500 (~$92 USDT): mude CAPITAL_BASE_USDT para 104.0
 #   O bot ajusta TUDO automaticamente!
 #
-CAPITAL_BASE_USDT     = 35.0   # ← Capital protegido: R$189,00 (colchão para saldo de $43.01)
+CAPITAL_BASE_USDT     = 30.0   # ← Capital protegido: R$ 165.00 (colchão de segurança para saldo real de $46.96)
 MIN_TRADE_USDT        = 12.0   # Mínimo da Binance Spot (não mude)
 MAX_TRADE_USDT        = 200.0  # Teto de segurança por trade
 COMPOUND_REINVEST_RATE = 0.80  # Reinveste 80% do lucro (guarda 20% seguro)
@@ -303,29 +303,54 @@ def get_macro_direction(exchange, symbol, macro_tf):
 
 def check_entry(df, macro_direction):
     """
-    SINAL DE ENTRADA — Bollinger Bands + RSI Mean Reversion Strategy
+    SINAL DE ENTRADA — SuperTrend + RSI Pullback Strategy (Uptrend Only)
     
-    CONDIÇÕES:
-    1. Preço de fechamento anterior abaixo da Banda de Bollinger Inferior
-    2. RSI abaixo de 30 (oversold)
+    CONDIÇÕES PARA COMPRA:
+    1. Macro Tendência (1h) é de ALTA: macro_direction == 1
+    2. Local Tendência (15m) é de ALTA: st_direction == 1
+    3. SuperTrend de alta ativa há pelo menos MIN_CANDLES_IN_TREND (3) candles
+    4. Recuo (Pullback) no RSI de 15m: rsi <= RSI_PULLBACK_LOW (45) mas acima de RSI_OVERSOLD (25)
+    5. Confirmação de Volume: volume do candle >= vol_ma * VOLUME_MULT (1.2)
     """
     if len(df) < 50:
         return False, "Dados insuficientes", 0.0
     
     c_last = df.iloc[-2]   # Último candle fechado
     
-    bb_lower = c_last.get('bb_lower', 0.0)
-    rsi = c_last.get('rsi', 50)
-    
-    cond_bb = c_last['close'] < bb_lower
-    cond_rsi = rsi < 30
-    
-    if cond_bb and cond_rsi:
-        atr = c_last.get('atr', 0.0)
-        reason = f"BB Low✅ | RSI={rsi:.1f}✅ | ATR=${atr:.4f}"
-        return True, reason, atr
+    # 1. Filtro Macro (1h)
+    if macro_direction != 1:
+        return False, f"Macro tendência não é de alta (macro={macro_direction})", 0.0
         
-    return False, "Sem sinal (BB ou RSI fora da zona)", 0.0
+    # 2. Filtro Local (15m)
+    st_dir = c_last.get('st_direction', 0)
+    if st_dir != 1:
+        return False, "SuperTrend local (15m) não é de alta", 0.0
+        
+    # 3. Evita breakout esticado (mínimo de candles na tendência atual)
+    for offset in range(2, 2 + cfg.MIN_CANDLES_IN_TREND):
+        if df.iloc[-offset].get('st_direction', 0) != 1:
+            return False, f"SuperTrend de alta recente demais (<{cfg.MIN_CANDLES_IN_TREND} candles)", 0.0
+            
+    # 4. Pullback saudável no RSI (comprar na correção, não no topo)
+    rsi = c_last.get('rsi', 50)
+    if rsi > cfg.RSI_PULLBACK_LOW:
+        return False, f"Sem Pullback: RSI={rsi:.1f} > {cfg.RSI_PULLBACK_LOW} (muito esticado)", 0.0
+    if rsi < cfg.RSI_OVERSOLD:
+        return False, f"RSI muito baixo: RSI={rsi:.1f} < {cfg.RSI_OVERSOLD} (queda forte)", 0.0
+        
+    # 5. Filtro de Volume (confirmação de força)
+    if cfg.VOLUME_FILTER:
+        vol = c_last.get('volume', 0.0)
+        vol_ma = c_last.get('vol_ma', 0.0)
+        min_vol = vol_ma * cfg.VOLUME_MULT
+        if vol < min_vol:
+            return False, f"Volume baixo: {vol:.0f} < {min_vol:.0f} (Média x {cfg.VOLUME_MULT})", 0.0
+            
+    # Tudo validado!
+    atr = c_last.get('atr', 0.0)
+    reason = f"SuperTrend 1h/15m🟢 | Pullback RSI={rsi:.1f}🟢 | Volume Confirmado🟢 | ATR=${atr:.4f}"
+    return True, reason, atr
+
 
 
 def check_exit_technical(df, state):
