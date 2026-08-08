@@ -1,4 +1,4 @@
-﻿import {
+import {
   Body,
   Controller,
   Delete,
@@ -139,4 +139,29 @@ export class MarketplaceController {
     }
     return { data: listing };
   }
+
+  @Get('universal-products')
+  async listUniversalProducts() {
+    return this.marketplaceService.listUniversalProducts();
+  }
+
+  @Post('universal-products')
+  async createUniversalProduct(
+    @Body()
+    body: {
+      name: string;
+      description?: string;
+      price: number;
+      category: string;
+      image: string;
+    },
+  ) {
+    return this.marketplaceService.createUniversalProduct(body);
+  }
+
+  @Post('universal-products/seed')
+  async seedUniversalProducts() {
+    return this.marketplaceService.seedUniversalProducts();
+  }
 }
+

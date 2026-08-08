@@ -1,4 +1,4 @@
-﻿import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 
@@ -275,4 +275,118 @@ export class MarketplaceService {
 
     return user?.id ?? null;
   }
+
+  async listUniversalProducts() {
+    return this.prisma.universalProduct.findMany({
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async createUniversalProduct(data: {
+    name: string;
+    description?: string;
+    price: number;
+    category: string;
+    image: string;
+  }) {
+    return this.prisma.universalProduct.create({
+      data,
+    });
+  }
+
+  async seedUniversalProducts() {
+    await this.prisma.universalProduct.deleteMany();
+
+    const products = [
+      {
+        name: "Arroz Camil 5kg",
+        description: "Arroz agulhinha tipo 1 de excelente qualidade, perfeito para o dia a dia.",
+        price: 22.90,
+        category: "Grãos",
+        image: "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=500&auto=format&fit=crop&q=60"
+      },
+      {
+        name: "Feijão Carioca Kicaldo 1kg",
+        description: "Feijão carioca selecionado, tipo 1, caldo grosso e saboroso.",
+        price: 8.49,
+        category: "Grãos",
+        image: "https://images.unsplash.com/photo-1551462147-ff29053bfc14?w=500&auto=format&fit=crop&q=60"
+      },
+      {
+        name: "Leite Integral Italac 1L",
+        description: "Leite UHT integral, rico em cálcio e vitaminas.",
+        price: 5.29,
+        category: "Laticínios",
+        image: "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=500&auto=format&fit=crop&q=60"
+      },
+      {
+        name: "Café Pilão Vácuo 500g",
+        description: "O café forte do Brasil, com torra e moagem intensas.",
+        price: 14.90,
+        category: "Bebidas",
+        image: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop&q=60"
+      },
+      {
+        name: "Sabão Líquido Omo 2L",
+        description: "Sabão líquido concentrado para roupas, rende muito mais.",
+        price: 27.90,
+        category: "Limpeza",
+        image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=500&auto=format&fit=crop&q=60"
+      },
+      {
+        name: "Pão Francês Unidade",
+        description: "Pão francês quentinho e crocante, assado na hora.",
+        price: 0.75,
+        category: "Padaria",
+        image: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=500&auto=format&fit=crop&q=60"
+      },
+      {
+        name: "Kit Churrasco Completo",
+        description: "Contém 1kg de Picanha, 1kg de Linguiça Tosca, 1kg de Coxinha da Asa e Pão de Alho.",
+        price: 149.90,
+        category: "Açougue",
+        image: "https://images.unsplash.com/photo-1544025162-d76694265947?w=500&auto=format&fit=crop&q=60"
+      },
+      {
+        name: "Refrigerante Coca-Cola 2L",
+        description: "Refrigerante de cola tradicional, sabor original gelado.",
+        price: 9.90,
+        category: "Bebidas",
+        image: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=60"
+      },
+      {
+        name: "Cerveja Heineken Latão 473ml",
+        description: "Cerveja puro malte holandesa premium gelada.",
+        price: 6.50,
+        category: "Bebidas",
+        image: "https://images.unsplash.com/photo-1608270586620-248524c67de9?w=500&auto=format&fit=crop&q=60"
+      },
+      {
+        name: "Azeite Carbonell Extra Virgem 500ml",
+        description: "Azeite de oliva extra virgem importado da Espanha.",
+        price: 34.90,
+        category: "Óleos",
+        image: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=500&auto=format&fit=crop&q=60"
+      },
+      {
+        name: "Macarrão Barilla Espaguete 500g",
+        description: "Macarrão de sêmola de trigo duro importado da Itália.",
+        price: 9.70,
+        category: "Massas",
+        image: "https://images.unsplash.com/photo-1563379971899-660589a0163e?w=500&auto=format&fit=crop&q=60"
+      },
+      {
+        name: "Sorvete Kibon Chocolate 1.5L",
+        description: "Sorvete cremoso de chocolate tradicional Kibon.",
+        price: 21.90,
+        category: "Sobremesas",
+        image: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=500&auto=format&fit=crop&q=60"
+      }
+    ];
+
+    return this.prisma.universalProduct.createMany({
+      data: products
+    });
+  }
 }
+

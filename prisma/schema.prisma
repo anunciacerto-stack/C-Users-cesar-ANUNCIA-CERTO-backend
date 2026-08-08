@@ -589,3 +589,15 @@ model EasyBridgeLesson {
   @@index([easyBridgeUserId])
   @@index([categoryId])
 }
+
+model UniversalProduct {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  price       Float
+  category    String
+  image       String   // URL to product photo
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
