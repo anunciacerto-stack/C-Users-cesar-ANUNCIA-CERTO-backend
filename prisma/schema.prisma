@@ -215,16 +215,17 @@ model AnimalListing {
 }
 
 model NfcTag {
-  id         String    @id @default(uuid())
-  tagId      String    @unique
-  targetId   String?
-  targetType String?
-  status     String    @default("active")
-  ownerId    String?
-  owner      User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  scans      NfcScan[]
+  id          String    @id @default(uuid())
+  tagId       String    @unique
+  targetId    String?
+  targetType  String?
+  observation String?
+  status      String    @default("active")
+  ownerId     String?
+  owner       User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  scans       NfcScan[]
 
   @@index([ownerId])
   @@index([targetId])

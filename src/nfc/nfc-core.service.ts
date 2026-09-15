@@ -9,6 +9,7 @@ export interface NfcRegisterInput {
   targetType?: string;
   userId?: string;
   user_id?: string;
+  observation?: string;
 }
 
 export interface NfcUpdateInput extends NfcRegisterInput {
@@ -50,6 +51,7 @@ export class NfcCoreService {
           targetId: objectIdInput || existingTag.targetId,
           targetType,
           ownerId: this.resolveOwnerId(userId) ?? existingTag.ownerId,
+          observation: input.observation ?? existingTag.observation,
         },
       });
     }
@@ -60,6 +62,7 @@ export class NfcCoreService {
         targetId: objectIdInput,
         targetType,
         ownerId: this.resolveOwnerId(userId),
+        observation: input.observation,
       },
     });
   }
@@ -285,7 +288,7 @@ export class NfcCoreService {
       return {
         category: 'url',
         data: {
-          link: url,
+          link: url, observation: tag?.observation,
         }
       };
     }
@@ -295,10 +298,119 @@ export class NfcCoreService {
       return {
         category: 'text',
         data: {
-          conteudo: text,
+          conteudo: text, observation: tag?.observation,
         }
       };
     }
+
+    // ─── Prefixos da Plataforma ANUNCIA CERTO NFC ──────────────────────────
+
+    if (targetId.startsWith('imovel:') || targetId.startsWith('lotes:')) {
+      const prefix = targetId.startsWith('imovel:') ? 'imovel:' : 'lotes:';
+      const content = targetId.substring(prefix.length);
+      const parts = content.split('|');
+      const id = parts[0]?.trim() || 'ID';
+      const detalhe1 = parts[1]?.trim() || '';
+      const detalhe2 = parts[2]?.trim() || '';
+      return {
+        category: prefix === 'lotes:' ? 'lotes' : 'imovel',
+        data: {
+          titulo: `${id}${detalhe1 ? ' — ' + detalhe1 : ''}`,
+          id_nfc: id,
+          detalhe1,
+          detalhe2,
+          status: 'REGISTRADO',
+        }
+      };
+    }
+
+    if (targetId.startsWith('servico:')) {
+      const content = targetId.substring(8);
+      const parts = content.split('|');
+      const id = parts[0]?.trim() || 'ID';
+      const nome = parts[1]?.trim() || '';
+      const descricao = parts[2]?.trim() || '';
+      return {
+        category: 'servico',
+        data: {
+          titulo: `${id}${nome ? ' — ' + nome : ''}`,
+          id_nfc: id,
+          descricao,
+          status: 'REGISTRADO',
+        }
+      };
+    }
+
+    if (targetId.startsWith('empresa:')) {
+      const content = targetId.substring(8);
+      const parts = content.split('|');
+      const id = parts[0]?.trim() || 'ID';
+      const nome = parts[1]?.trim() || '';
+      const cidade = parts[2]?.trim() || '';
+      return {
+        category: 'empresa',
+        data: {
+          titulo: `${id}${nome ? ' — ' + nome : ''}`,
+          id_nfc: id,
+          cidade,
+          status: 'REGISTRADO',
+        }
+      };
+    }
+
+    if (targetId.startsWith('animal:') || targetId.startsWith('pet:')) {
+      const prefix = targetId.startsWith('animal:') ? 'animal:' : 'pet:';
+      const content = targetId.substring(prefix.length);
+      const parts = content.split('|');
+      const id = parts[0]?.trim() || 'ID';
+      const nome = parts[1]?.trim() || '';
+      const tipo = parts[2]?.trim() || '';
+      return {
+        category: 'pet',
+        data: {
+          titulo: `${id}${nome ? ' — ' + nome : ''}`,
+          id_nfc: id,
+          animalType: tipo,
+          status: 'REGISTRADO',
+        }
+      };
+    }
+
+    if (targetId.startsWith('objetos:')) {
+      const content = targetId.substring(8);
+      const parts = content.split('|');
+      const id = parts[0]?.trim() || 'ID';
+      const descricao = parts[1]?.trim() || '';
+      return {
+        category: 'objetos',
+        data: {
+          titulo: `${id}${descricao ? ' — ' + descricao : ''}`,
+          id_nfc: id,
+          descricao,
+          status: 'REGISTRADO',
+        }
+      };
+    }
+
+    if (targetId.startsWith('owner:') || targetId.startsWith('saude:')) {
+      const prefix = targetId.startsWith('owner:') ? 'owner:' : 'saude:';
+      const content = targetId.substring(prefix.length);
+      const parts = content.split('|');
+      const id = parts[0]?.trim() || 'ID';
+      const modelo = parts[1]?.trim() || '';
+      const cor = parts[2]?.trim() || '';
+      return {
+        category: 'veiculo',
+        data: {
+          titulo: `${id}${modelo ? ' — ' + modelo : ''}`,
+          id_nfc: id,
+          veiculo: modelo,
+          cor,
+          status: 'REGISTRADO',
+        }
+      };
+    }
+
 
     // 3. Fallback para busca convencional de IDs no banco de dados para classificados, animais ou imóveis
     let data: any = null;
