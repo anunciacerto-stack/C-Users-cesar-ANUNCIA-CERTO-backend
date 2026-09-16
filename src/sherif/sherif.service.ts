@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { NfcCoreService } from '../nfc/nfc-core.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 export interface SherifCheckBody {
   objectId?: string;
@@ -9,21 +10,12 @@ export interface SherifCheckBody {
   status?: string;
 }
 
-interface SherifRecord {
-  id: string;
-  object_id: string;
-  user_id: string;
-  status: string;
-  nfc_status: string;
-  message: string;
-  created_at: string;
-}
-
 @Injectable()
 export class SherifService {
-  private readonly checks: SherifRecord[] = [];
-
-  constructor(private readonly nfcCore: NfcCoreService) {}
+  constructor(
+    private readonly nfcCore: NfcCoreService,
+    private readonly prisma: PrismaService
+  ) {}
 
   async check(body: SherifCheckBody) {
     const objectId = (body.objectId ?? body.object_id ?? '').trim();
@@ -35,25 +27,45 @@ export class SherifService {
     }
 
     const nfcStatus = await this.nfcCore.getStatus(objectId);
-    const now = new Date().toISOString();
-    const record: SherifRecord = {
-      id: `sh_${Date.now()}`,
-      object_id: objectId,
-      user_id: userId,
-      status,
-      nfc_status: nfcStatus,
-      message:
-        nfcStatus === 'UNKNOWN'
-          ? 'Verificacao registrada sem vinculacao NFC'
-          : 'Verificacao registrada com vinculacao NFC',
-      created_at: now,
-    };
+    const message =
+      nfcStatus === 'UNKNOWN'
+        ? 'Verificacao registrada sem vinculacao NFC'
+        : 'Verificacao registrada com vinculacao NFC';
 
-    this.checks.unshift(record);
-    return record;
+    const record = await this.prisma.sherifCheck.create({
+      data: {
+        userId,
+        tipo: 'audit',
+        valor: objectId,
+        resultado: status,
+        detalhes: message,
+      },
+    });
+
+    return {
+      id: record.id,
+      object_id: record.valor,
+      user_id: record.userId,
+      status: record.resultado,
+      nfc_status: nfcStatus,
+      message: record.detalhes,
+      created_at: record.createdAt,
+    };
   }
 
-  history() {
-    return this.checks;
+  async history() {
+    const checks = await this.prisma.sherifCheck.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return checks.map(c => ({
+      id: c.id,
+      objectId: c.valor,
+      userId: c.userId,
+      status: c.resultado,
+      message: c.detalhes,
+      date: new Date(c.createdAt).toLocaleString('pt-BR').substring(0, 16),
+    }));
   }
 }
+

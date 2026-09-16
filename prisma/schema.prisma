@@ -602,3 +602,14 @@ model UniversalProduct {
   updatedAt   DateTime @updatedAt
 }
 
+model SherifCheck {
+  id        String   @id @default(uuid())
+  userId    String?
+  tipo      String
+  valor     String
+  resultado String
+  detalhes  String?
+  createdAt DateTime @default(now())
+  @@index([userId])
+}
+
